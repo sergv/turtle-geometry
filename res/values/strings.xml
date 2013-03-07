@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+  <string name="app_name">TurtleGraphics</string>
+  <string name="label_run">Run</string>
+  <string name="label_stop">Stop</string>
+  <string name="label_save">Save</string>
+  <string name="label_load">Load</string>
+  <string name="delay_label">Delay, ms</string>
+
+</resources>
