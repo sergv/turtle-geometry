@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+  <item type="integer" name="program_input_max_lines" format="integer">10</item>
+
+</resources>

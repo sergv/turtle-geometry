@@ -22,6 +22,10 @@
               android:padding="@dimen/padding"
               android:textSize="@dimen/font_size"
               android:typeface="monospace"
+              android:maxWidth="@dimen/program_input_max_width"
+              android:maxLines="@integer/program_input_max_lines"
+              android:lines="@integer/program_input_max_lines"
+              android:scrollHorizontally="true"
               />
 
       <LinearLayout android:layout_width="wrap_content"
@@ -80,6 +84,16 @@
                   android:text="100"
                   android:textSize="@dimen/font_size"
                   android:typeface="monospace"
+                  android:numeric="integer"
+                  />
+
+        <TextView android:text="@string/delay_units_label"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:orientation="horizontal"
+                  android:padding="@dimen/padding"
+                  android:textSize="@dimen/font_size"
+                  android:typeface="monospace"
                   />
 
       </LinearLayout>
@@ -96,8 +110,10 @@
                      android:minWidth="@dimen/progress_bar_min_width"
                      android:minHeight="@dimen/progress_bar_min_height"
                      android:indeterminate="false"
-                     android:indeterminateBehavior="cycle"
+                     android:progressDrawable="@drawable/progress_circle"
+                     style="@android:style/Widget.ProgressBar.Horizontal"
                      />
+                     <!-- android:indeterminateBehavior="cycle" -->
                      <!-- style="@android:style/Widget.ProgressBar.Large" -->
         <!-- android:layout_marginRight="@dimen/progress_bar_right_margin" -->
 
@@ -105,10 +121,11 @@
 
   </LinearLayout>
 
-  <SurfaceView android:id="@+id/drawing_area"
-               android:layout_width="wrap_content"
-               android:layout_height="wrap_content"
-               android:padding="@dimen/padding"
-               />
+  <org.turtle.geometry.TurtleView
+      android:id="@+id/drawing_area"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:padding="@dimen/padding"
+      />
 
 </LinearLayout>
