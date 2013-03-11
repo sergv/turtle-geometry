@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+  <item android:id="@+id/progress_bar"
+        android:actionViewClass="android.widget.ProgressBar"
+        android:title="menu_progress_bar"
+        android:showAsAction="always"
+        />
+</menu>
