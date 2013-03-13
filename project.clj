@@ -41,12 +41,13 @@ Intended for use with Abelson's book going under the same name."
   ;;                :host "localhost"
   ;;                :port 10001}
 
-  :plugins [[lein-droid "0.1.0-beta6-enhanced-dex"]]
+  :plugins [[lein-droid "0.1.0-preview2-enhanced-dex"]]
   :android {:sdk-path "/home/sergey/projects/android/android-sdk-linux"
 
             ;; Uncomment this if dexer fails with OutOfMemoryException
             ;; :force-dex-optimize true
-            :dx-aux-arguments ["--num-threads=4" "--statistics"]
+            :dex-opts ["-JXmx4096M"]
+            :dex-aux-opts ["--num-threads=4" "--statistics" ]
 
             :min-version "10"
             :target-version "15"
