@@ -17,7 +17,7 @@
            [android.graphics Canvas Color Paint]
            [android.os AsyncTask]
            [android.view Menu MenuInflater MenuItem]
-           [android.view MotionEvent SurfaceHolder SurfaceView View]
+           [android.view MotionEvent SurfaceHolder SurfaceView View Window]
            [android.widget Button EditText ProgressBar]
            [android.util AttributeSet]
            [android.util.Log]
@@ -44,30 +44,121 @@
                        (str "invalid resource type " resource-type)))
          ~(symbol (name resource-name)))))
 
+;;;; threaded surface view boilerplate
+
+(defrecord ViewState [drawing-func
+                      surface-available?
+                      drawing-thread])
+
+(gen-class :name org.turtle.geometry.TurtleView
+           :main false
+           :extends android.view.SurfaceView
+           :implements [android.view.SurfaceHolder$Callback]
+           :state view_state
+           :init view-init
+           :post-init view-post-init)
+
+(defn -view-init
+  ([^Context context]
+     [[context]
+      (ViewState. (atom nil) (atom nil) (atom nil :meta {:tag Thread}))])
+  ([^Context context ^AttributeSet attrs]
+     [[context attrs]
+      (ViewState. (atom nil) (atom nil) (atom nil :meta {:tag Thread}))])
+  ([^Context context ^AttributeSet attrs defStyle]
+     [[context attrs defStyle]
+      (ViewState. (atom nil) (atom nil) (atom nil :meta {:tag Thread}))]))
+
+(defn -view-post-init
+  ([^org.turtle.geometry.TurtleView this
+    ^Context context]
+     (.. this (getHolder) (addCallback this)))
+  ([^org.turtle.geometry.TurtleView this
+    ^Context context ^AttributeSet attrs]
+     (-view-post-init this context))
+  ([^org.turtle.geometry.TurtleView this
+    ^Context context ^AttributeSet attrs defStyle]
+     (-view-post-init this context)))
+
+
+(defn -surfaceChanged [^org.turtle.geometry.TurtleView this
+                       ^SurfaceHolder holder
+                       format
+                       width
+                       height])
+
+(defn -surfaceCreated [^org.turtle.geometry.TurtleView this
+                       ^SurfaceHolder holder]
+  (reset! (.surface-available? ^ViewState (.view_state this)) true)
+  (let [thread ^Thread
+        (new Thread
+             (fn []
+               (loop []
+                 (when @(.surface-available? ^ViewState (.view_state this))
+                   (if-let [f @(.drawing-func ^ViewState (.view_state this))]
+                     (when-let [^Canvas canvas
+                                (.. this (getHolder) (lockCanvas nil))]
+                       (try
+                         (f canvas)
+                         (finally
+                           (.. this (getHolder) (unlockCanvasAndPost canvas)))))
+                     (java.lang.Thread/sleep 100 0))
+                   (recur)))
+               (log "Thread dies")))]
+    (reset! (.drawing-thread ^ViewState (.view_state this))
+            thread)
+    (.start thread)))
+
+(defn -surfaceDestroyed [^org.turtle.geometry.TurtleView this
+                         ^SurfaceHolder holder]
+  (reset! (.surface-available? ^ViewState (.view_state this)) false)
+  (loop []
+    (when (not (try
+                 (.join ^Thread @(.drawing-thread ^ViewState (.view_state this)))
+                 true
+                 (catch InterruptedException e
+                   false)))
+      (recur))))
+
 ;;;; activity functions
 
 (def ^{:dynamic true} *activity* (atom nil))
 (def ^{:dynamic true} *task-runner* (atom nil))
 
+(defrecord ProgressBarMenuItem [^ProgressBar view
+                                ^MenuItem item])
+
+(defn show-progress-bar [^ProgressBarMenuItem menu-item]
+  (doto ^MenuItem (.item menu-item)
+        (. expandActionView)
+        (. setVisible true))
+  (. ^ProgressBar (.view menu-item) setVisibility ProgressBar/VISIBLE))
+
+(defn hide-progress-bar [^ProgressBarMenuItem menu-item]
+  (doto ^MenuItem (.item menu-item)
+        (. collapseActionView)
+        (. setVisible false))
+  (. ^ProgressBar (.view menu-item) setVisibility ProgressBar/GONE))
+
 (defrecord ActivityState [;;^org.turtle.geometry.TurtleView
                           drawing-area
-                          ^ProgressBar progress-bar
+                          ^ProgressBarMenuItem progress-bar
                           ^EditText program-source-editor
                           ^EditText delay-entry
                           ^Menu menu])
 
 (defn -init []
   [[] (ActivityState. (atom nil)
-                      (atom nil :meta {:tag ProgressBar})
+                      (atom nil :meta {:tag ProgressBarMenuItem})
                       (atom nil :meta {:tag EditText})
                       (atom nil :meta {:tag EditText})
                       (atom nil :meta {:tag Menu}))])
 
 
-(defn make-task [^Activity activity
-                 on-start
-                 update
-                 on-end]
+(defn make-test-task [^Activity activity
+                      on-start
+                      update
+                      on-end]
   (let [run-on-ui-thread (fn [action]
                            (. activity runOnUiThread action))]
     (fn []
@@ -146,36 +237,35 @@
                          (. canvas drawColor Color/WHITE)
                          (drawer canvas)
                          (Thread/sleep delay 0)))))
-           (let [^ProgressBar progress-bar @(.progress-bar ^ActivityState (.state activity))
-                 ^MenuItem progress-bar-item (. @(.menu ^ActivityState (.state activity))
-                                                findItem (resource :id :progress_bar))]
+           (let [^ProgressBarMenuItem bar-item
+                 @(.progress-bar ^ActivityState (.state activity))]
              (. @*task-runner* execute
-                (make-task activity
-                           (fn []
-                             (. progress-bar-item expandActionView)
-                             (doto progress-bar
-                               (. setVisibility ProgressBar/VISIBLE)
-                               (. setProgress 0)
-                               (. setMax 100))
-                             (. button setEnabled false))
-                           (fn [] (. progress-bar incrementProgressBy 1))
-                           (fn []
-                             (. progress-bar setVisibility ProgressBar/GONE)
-                             (. progress-bar-item collapseActionView)
-                             (. button setEnabled true)))))
+                (make-test-task activity
+                                (fn []
+                                  (show-progress-bar bar-item)
+                                  (doto ^ProgressBar (.view bar-item)
+                                    (. setProgress 0)
+                                    (. setMax 100))
+                                  (. button setEnabled false))
+                                (fn [] (. ^ProgressBar (.view bar-item) incrementProgressBy 1))
+                                (fn []
+                                  (hide-progress-bar bar-item)
+                                  (. button setEnabled true)))))
            (log "Clicked run button"))))))
 
 (defn -onCreateOptionsMenu [^org.turtle.geometry.TurtleGraphics this
                             ^Menu menu]
+  (. this superOnCreateOptionsMenu menu)
   (.. this (getMenuInflater) (inflate (resource :menu :main) menu))
   (reset! (.menu ^ActivityState (.state this))
           menu)
-  (let [progress-bar-item (.. menu (findItem (resource :id :progress_bar)))
-        progress-bar ^ProgressBar (. progress-bar-item (getActionView))]
+  (let [progress-bar-item ^MenuItem (.. menu (findItem (resource :id :progress_bar)))
+        progress-bar ^ProgressBar (. progress-bar-item (getActionView))
+        bar-item (ProgressBarMenuItem. progress-bar progress-bar-item)]
     (reset! (.progress-bar ^ActivityState (.state this))
-            progress-bar)
-    (. progress-bar setVisibility ProgressBar/GONE)
-    (. progress-bar-item collapseActionView))
+            bar-item)
+    ;; (hide-progress-bar bar-item)
+    )
   true)
 
 (defn -onResume [^org.turtle.geometry.TurtleGraphics this]
@@ -236,80 +326,6 @@
     (fn [^Canvas canvas]
       (draw-grid canvas (first @ps) (color->paint Color/BLACK))
       (reset! ps (rest @ps)))))
-
-;;;; threaded surface view boilerplate
-
-(defrecord ViewState [drawing-func
-                      surface-available?
-                      drawing-thread])
-
-(gen-class :name org.turtle.geometry.TurtleView
-           :main false
-           :extends android.view.SurfaceView
-           :implements [android.view.SurfaceHolder$Callback]
-           :state view_state
-           :init view-init
-           :post-init view-post-init)
-
-(defn -view-init
-  ([^Context context]
-     [[context]
-      (ViewState. (atom nil) (atom nil) (atom nil :meta {:tag Thread}))])
-  ([^Context context ^AttributeSet attrs]
-     [[context attrs]
-      (ViewState. (atom nil) (atom nil) (atom nil :meta {:tag Thread}))])
-  ([^Context context ^AttributeSet attrs defStyle]
-     [[context attrs defStyle]
-      (ViewState. (atom nil) (atom nil) (atom nil :meta {:tag Thread}))]))
-
-(defn -view-post-init
-  ([^org.turtle.geometry.TurtleView this
-    ^Context context]
-     (.. this (getHolder) (addCallback this))
-     (reset! (.drawing-thread ^ViewState (.view_state this))
-             (new Thread
-                  (fn []
-                    (loop []
-                      (when @(.surface-available? ^ViewState (.view_state this))
-                        (if-let [f @(.drawing-func ^ViewState (.view_state this))]
-                          (when-let [^Canvas canvas
-                                     (.. this (getHolder) (lockCanvas nil))]
-                            (try
-                              (f canvas)
-                              (finally
-                                (.. this (getHolder) (unlockCanvasAndPost canvas)))))
-                          (java.lang.Thread/sleep 100 0))
-                        (recur)))))))
-  ([^org.turtle.geometry.TurtleView this
-    ^android.content.Context context ^android.util.AttributeSet attrs]
-     (-view-post-init this context))
-  ([^org.turtle.geometry.TurtleView this
-    ^android.content.Context context ^android.util.AttributeSet attrs defStyle]
-     (-view-post-init this context)))
-
-
-(defn -surfaceChanged [^org.turtle.geometry.TurtleView this
-                       ^SurfaceHolder holder
-                       format
-                       width
-                       height])
-
-(defn -surfaceCreated [^org.turtle.geometry.TurtleView this
-                       ^SurfaceHolder holder]
-  (reset! (.surface-available? ^ViewState (.view_state this)) true)
-  (.start ^Thread @(.drawing-thread ^ViewState (.view_state this))))
-
-(defn -surfaceDestroyed [^org.turtle.geometry.TurtleView this
-                         ^SurfaceHolder holder]
-  (reset! (.surface-available? ^ViewState (.view_state this)) false)
-  (loop []
-    (when (not (try
-                 (.join ^Thread @(.drawing-thread ^ViewState (.view_state this)))
-                 true
-                 (catch InterruptedException e
-                   false)))
-      (recur))))
-
 
 
 

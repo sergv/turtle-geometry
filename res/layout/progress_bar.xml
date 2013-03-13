@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProgressBar xmlns:android="http://schemas.android.com/apk/res/android"
+             android:id="@+id/progress_bar"
+             android:layout_width="wrap_content"
+             android:layout_height="wrap_content"
+             android:padding="@dimen/padding"
+             android:minWidth="@dimen/progress_bar_min_width"
+             android:minHeight="@dimen/progress_bar_min_height"
+             android:indeterminate="false"
+             android:progressDrawable="@drawable/progress_circle"
+             style="@android:style/Widget.ProgressBar.Horizontal"
+             />
