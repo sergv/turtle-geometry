@@ -2,5 +2,6 @@
 <resources>
 
   <item type="integer" name="program_input_max_lines" format="integer">10</item>
+  <item type="integer" name="error_output_max_lines" format="integer">5</item>
 
 </resources>

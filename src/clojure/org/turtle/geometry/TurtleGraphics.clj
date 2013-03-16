@@ -6,8 +6,7 @@
               :extends android.app.Activity
               :exposes-methods {onCreate superOnCreate
                                 onResume superOnResume
-                                onPause superOnPause
-                                onCreateOptionsMenu superOnCreateOptionsMenu}
+                                onPause superOnPause}
               :state ^{:tag ActivityState} state
               :init init
               :constructors {[] []})
@@ -18,7 +17,7 @@
            [android.os AsyncTask]
            [android.view Menu MenuInflater MenuItem]
            [android.view MotionEvent SurfaceHolder SurfaceView View Window]
-           [android.widget Button EditText ProgressBar]
+           [android.widget Button EditText ProgressBar TextView]
            [android.util AttributeSet]
            [android.util.Log]
 
@@ -44,7 +43,7 @@
                        (str "invalid resource type " resource-type)))
          ~(symbol (name resource-name)))))
 
-;;;; threaded surface view boilerplate
+;;;; threaded surface view
 
 (defrecord ViewState [drawing-func
                       surface-available?
@@ -93,6 +92,7 @@
   (let [thread ^Thread
         (new Thread
              (fn []
+               (log "Drawing thread borns")
                (loop []
                  (when @(.surface-available? ^ViewState (.view_state this))
                    (if-let [f @(.drawing-func ^ViewState (.view_state this))]
@@ -104,7 +104,7 @@
                            (.. this (getHolder) (unlockCanvasAndPost canvas)))))
                      (java.lang.Thread/sleep 100 0))
                    (recur)))
-               (log "Thread dies")))]
+               (log "Drawing thread dies")))]
     (reset! (.drawing-thread ^ViewState (.view_state this))
             thread)
     (.start thread)))
@@ -125,32 +125,23 @@
 (def ^{:dynamic true} *activity* (atom nil))
 (def ^{:dynamic true} *task-runner* (atom nil))
 
-(defrecord ProgressBarMenuItem [^ProgressBar view
-                                ^MenuItem item])
+(defn show-progress-bar [^org.turtle.geometry.TurtleGraphics activity]
+  (. activity setProgressBarIndeterminateVisibility true))
 
-(defn show-progress-bar [^ProgressBarMenuItem menu-item]
-  (doto ^MenuItem (.item menu-item)
-        (. expandActionView)
-        (. setVisible true))
-  (. ^ProgressBar (.view menu-item) setVisibility ProgressBar/VISIBLE))
-
-(defn hide-progress-bar [^ProgressBarMenuItem menu-item]
-  (doto ^MenuItem (.item menu-item)
-        (. collapseActionView)
-        (. setVisible false))
-  (. ^ProgressBar (.view menu-item) setVisibility ProgressBar/GONE))
+(defn hide-progress-bar [^org.turtle.geometry.TurtleGraphics activity]
+  (. activity setProgressBarIndeterminateVisibility false))
 
 (defrecord ActivityState [;;^org.turtle.geometry.TurtleView
                           drawing-area
-                          ^ProgressBarMenuItem progress-bar
                           ^EditText program-source-editor
+                          ^TextView error-output
                           ^EditText delay-entry
                           ^Menu menu])
 
 (defn -init []
   [[] (ActivityState. (atom nil)
-                      (atom nil :meta {:tag ProgressBarMenuItem})
                       (atom nil :meta {:tag EditText})
+                      (atom nil :meta {:tag TextView})
                       (atom nil :meta {:tag EditText})
                       (atom nil :meta {:tag Menu}))])
 
@@ -168,6 +159,35 @@
         (run-on-ui-thread update))
       (run-on-ui-thread on-end))))
 
+(defn make-double-tap-handler
+  ([f]
+     (make-double-tap-handler f 500))
+  ([f recognition-time]
+     (let [last-time (atom nil)]
+       (proxy [android.view.View$OnTouchListener] []
+         (onTouch [^View view
+                   ^MotionEvent event]
+           (cond (= MotionEvent/ACTION_DOWN (. event getActionMasked))
+                 (let [current-time (. java.lang.System currentTimeMillis)]
+                   (if @last-time
+                     (if (< (java.lang.Math/abs ^long (- @last-time
+                                                         current-time))
+                            recognition-time)
+                       (do (f)
+                           (reset! last-time nil)
+                           true)
+                       (do (reset! last-time current-time)
+                           false))
+                     (do (reset! last-time current-time)
+                         false)))
+                 :else
+                 false))))))
+
+(defn text-input->int [^EditText input-field]
+  (Integer/valueOf ^String
+                   (.. input-field
+                       (getText)
+                       (toString))))
 
 (declare make-diminishing-grids-drawer)
 
@@ -184,37 +204,26 @@
   ;; (defonce *nrepl-server* (start-server :port 10001))
   (doto this
     (. superOnCreate bundle)
-    (. setContentView (resource :layout :main)))
+    (. requestWindowFeature Window/FEATURE_INDETERMINATE_PROGRESS)
+    (. setContentView (resource :layout :main))
+    (. setProgressBarIndeterminateVisibility false))
   (reset! (.drawing-area ^ActivityState (.state this))
           (.findViewById this (resource :drawing_area)))
   (reset! (.program-source-editor ^ActivityState (.state this))
           (.findViewById this (resource :program_input)))
+  (reset! (.error-output ^ActivityState (.state this))
+          (.findViewById this (resource :error_output)))
   (reset! (.delay-entry ^ActivityState (.state this))
           (.findViewById this (resource :delay_entry)))
   (make-ui-dimmer this (.findViewById this (resource :main_layout)))
 
   (. ^EditText @(.program-source-editor ^ActivityState (.state this))
      setOnTouchListener
-     (let [last-time (atom nil)]
-       (proxy [android.view.View$OnTouchListener] []
-         (onTouch [^View view
-                   ^MotionEvent event]
-           (cond (= MotionEvent/ACTION_DOWN (. event getActionMasked))
-                 (let [current-time (. java.lang.System currentTimeMillis)]
-                   (log "Touched source editor")
-                   (if @last-time
-                     (if (< (java.lang.Math/abs ^long (- @last-time
-                                                         current-time))
-                            500)
-                       (do (log "Double tap on source editor")
-                           (reset! last-time nil)
-                           true)
-                       (do (reset! last-time current-time)
-                           false))
-                     (do (reset! last-time current-time)
-                         false)))
-                 :else
-                 false)))))
+     (make-double-tap-handler (fn [] (log "Touched source editor"))))
+  (. ^TextView @(.error-output ^ActivityState (.state this))
+     setOnTouchListener
+     (make-double-tap-handler (fn [] (log "Touched error output"))))
+
 
   (let [^org.turtle.geometry.TurtleGraphics activity this
         ^Button button (. this findViewById (resource :button_run))]
@@ -229,44 +238,23 @@
                                      @(.drawing-area ^ActivityState
                                                      (.state activity))))
                      (fn [^Canvas canvas]
-                       (let [delay (Integer/valueOf
-                                    ^String
-                                    (.. @(.delay-entry ^ActivityState (.state activity))
-                                        (getText)
-                                        (toString)))]
+                       (let [delay (text-input->int
+                                    @(.delay-entry ^ActivityState (.state activity)))]
                          (. canvas drawColor Color/WHITE)
                          (drawer canvas)
                          (Thread/sleep delay 0)))))
-           (let [^ProgressBarMenuItem bar-item
-                 @(.progress-bar ^ActivityState (.state activity))]
-             (. @*task-runner* execute
-                (make-test-task activity
-                                (fn []
-                                  (show-progress-bar bar-item)
-                                  (doto ^ProgressBar (.view bar-item)
-                                    (. setProgress 0)
-                                    (. setMax 100))
-                                  (. button setEnabled false))
-                                (fn [] (. ^ProgressBar (.view bar-item) incrementProgressBy 1))
-                                (fn []
-                                  (hide-progress-bar bar-item)
-                                  (. button setEnabled true)))))
+           (. @*task-runner* execute
+              (make-test-task activity
+                              (fn []
+                                (show-progress-bar activity)
+                                (. button setEnabled false))
+                              (fn [])
+                              (fn []
+                                (hide-progress-bar activity)
+                                (. button setEnabled true))))
            (log "Clicked run button"))))))
 
-(defn -onCreateOptionsMenu [^org.turtle.geometry.TurtleGraphics this
-                            ^Menu menu]
-  (. this superOnCreateOptionsMenu menu)
-  (.. this (getMenuInflater) (inflate (resource :menu :main) menu))
-  (reset! (.menu ^ActivityState (.state this))
-          menu)
-  (let [progress-bar-item ^MenuItem (.. menu (findItem (resource :id :progress_bar)))
-        progress-bar ^ProgressBar (. progress-bar-item (getActionView))
-        bar-item (ProgressBarMenuItem. progress-bar progress-bar-item)]
-    (reset! (.progress-bar ^ActivityState (.state this))
-            bar-item)
-    ;; (hide-progress-bar bar-item)
-    )
-  true)
+
 
 (defn -onResume [^org.turtle.geometry.TurtleGraphics this]
   (. this superOnResume))
@@ -327,47 +315,6 @@
       (draw-grid canvas (first @ps) (color->paint Color/BLACK))
       (reset! ps (rest @ps)))))
 
-
-
-;;;; plain view with overridden onDraw(...)
-
-;; (def ^{:dynamic true} *drawing-state* (atom {:cleared false
-;;                                              :grid-densness (first primes)
-;;                                              :primes (rest primes)}))
-;;
-;; (defrecord ViewState [drawing-func])
-;;
-;; (gen-class :name org.turtle.geometry.TurtleView
-;;            :main false
-;;            :extends View
-;;            :state view_state
-;;            :init view-init
-;;            :exposes-methods {onDraw superOnDraw})
-;;
-;; (defn -view-init
-;;   ([^android.content.Context context]
-;;      [[context] (ViewState. (atom nil))])
-;;   ([^android.content.Context context ^android.util.AttributeSet attrs]
-;;      [[context attrs] (ViewState. (atom nil))])
-;;   ([^android.content.Context context ^android.util.AttributeSet attrs defStyle]
-;;      [[context attrs defStyle] (ViewState. (atom nil))]))
-;;
-;; (defn -onDraw [^org.turtle.geometry.TurtleView this
-;;                ^Canvas canvas]
-;;   (log "onDraw")
-;;   (if (@*drawing-state* :cleared)
-;;     (do
-;;       (draw-grid canvas (@*drawing-state* :grid-densness)
-;;                  (color->paint (random-color) ;; Color/BLACK
-;;                                ))
-;;       (when-let [func @(.drawing-func ^ViewState (.view_state this))]
-;;         (func canvas))
-;;       (swap! *drawing-state* assoc
-;;              :grid-densness (first (@*drawing-state* :primes))
-;;              :primes (rest (@*drawing-state* :primes))))
-;;     (do
-;;       (. canvas drawColor Color/WHITE)
-;;       (swap! *drawing-state* assoc :cleared true))))
 
 
 ;; Local Variables:
