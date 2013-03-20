@@ -40,6 +40,13 @@
                 android:padding="@dimen/button_padding"
                 />
 
+        <Button android:id="@+id/button_step"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_step"
+                android:padding="@dimen/button_padding"
+                />
+
         <Button android:id="@+id/button_stop"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

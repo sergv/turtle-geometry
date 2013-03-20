@@ -3,6 +3,7 @@
 
   <string name="app_name">TurtleGraphics</string>
   <string name="label_run">Run</string>
+  <string name="label_step">Step</string>
   <string name="label_stop">Stop</string>
   <string name="label_save">Save</string>
   <string name="label_load">Load</string>

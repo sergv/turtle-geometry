@@ -13,7 +13,7 @@
   (:import [org.turtle.geometry.R]
            [android.app Activity]
            [android.content Context]
-           [android.graphics Canvas Color Paint]
+           [android.graphics Bitmap Canvas Color Paint Rect]
            [android.os AsyncTask]
            [android.view Menu MenuInflater MenuItem]
            [android.view MotionEvent SurfaceHolder SurfaceView View Window]
@@ -21,13 +21,20 @@
            [android.util AttributeSet]
            [android.util.Log]
 
-           [java.util.concurrent LinkedBlockingQueue ThreadPoolExecutor TimeUnit])
+           [java.util.concurrent
+            ConcurrentLinkedQueue
+            LinkedBlockingQueue
+            ThreadPoolExecutor
+            TimeUnit])
   (:use [clojure.tools.nrepl.server :only (start-server stop-server)]
         [neko.init]
         [android.clojure.util :only (make-ui-dimmer)]))
 
-(defn log [msg]
-  (android.util.Log/d "TurtleGeometry" msg))
+(defn log
+  ([msg]
+     (android.util.Log/d "TurtleGeometry" msg))
+  ([msg & args]
+     (log (apply format msg args))))
 
 (defmacro resource
   ([id] `(resource :id ~id))
@@ -45,9 +52,11 @@
 
 ;;;; threaded surface view
 
-(defrecord ViewState [drawing-func
-                      surface-available?
-                      drawing-thread])
+(defrecord ViewState [surface-available?
+                      ^Bitmap drawing-bitmap
+                      ^Canvas drawing-canvas
+                      ^Thread drawing-thread
+                      ^ConcurrentLinkedQueue message-queue])
 
 (gen-class :name org.turtle.geometry.TurtleView
            :main false
@@ -60,13 +69,25 @@
 (defn -view-init
   ([^Context context]
      [[context]
-      (ViewState. (atom nil) (atom nil) (atom nil :meta {:tag Thread}))])
+      (ViewState. (atom nil)
+                  (atom nil :meta {:tag Bitmap})
+                  (atom nil :meta {:tag Canvas})
+                  (atom nil :meta {:tag Thread})
+                  (new ConcurrentLinkedQueue))])
   ([^Context context ^AttributeSet attrs]
      [[context attrs]
-      (ViewState. (atom nil) (atom nil) (atom nil :meta {:tag Thread}))])
+      (ViewState. (atom nil)
+                  (atom nil :meta {:tag Bitmap})
+                  (atom nil :meta {:tag Canvas})
+                  (atom nil :meta {:tag Thread})
+                  (new ConcurrentLinkedQueue))])
   ([^Context context ^AttributeSet attrs defStyle]
      [[context attrs defStyle]
-      (ViewState. (atom nil) (atom nil) (atom nil :meta {:tag Thread}))]))
+      (ViewState. (atom nil)
+                  (atom nil :meta {:tag Bitmap})
+                  (atom nil :meta {:tag Canvas})
+                  (atom nil :meta {:tag Thread})
+                  (new ConcurrentLinkedQueue))]))
 
 (defn -view-post-init
   ([^org.turtle.geometry.TurtleView this
@@ -84,27 +105,21 @@
                        ^SurfaceHolder holder
                        format
                        width
-                       height])
+                       height]
+  (reset! (.drawing-bitmap ^ViewState (.view_state this))
+          (if-let [orig-bmap ^Bitmap @(.drawing-bitmap ^ViewState (.view_state this))]
+            (Bitmap/createScaledBitmap orig-bmap width height true)
+            (Bitmap/createBitmap width height android.graphics.Bitmap$Config/ARGB_8888)))
+  (reset! (.drawing-canvas ^ViewState (.view_state this))
+          (new Canvas @(.drawing-bitmap ^ViewState (.view_state this)))))
+
+(declare make-drawing-thread)
 
 (defn -surfaceCreated [^org.turtle.geometry.TurtleView this
                        ^SurfaceHolder holder]
   (reset! (.surface-available? ^ViewState (.view_state this)) true)
   (let [thread ^Thread
-        (new Thread
-             (fn []
-               (log "Drawing thread borns")
-               (loop []
-                 (when @(.surface-available? ^ViewState (.view_state this))
-                   (if-let [f @(.drawing-func ^ViewState (.view_state this))]
-                     (when-let [^Canvas canvas
-                                (.. this (getHolder) (lockCanvas nil))]
-                       (try
-                         (f canvas)
-                         (finally
-                           (.. this (getHolder) (unlockCanvasAndPost canvas)))))
-                     (java.lang.Thread/sleep 100 0))
-                   (recur)))
-               (log "Drawing thread dies")))]
+        (make-drawing-thread this)]
     (reset! (.drawing-thread ^ViewState (.view_state this))
             thread)
     (.start thread)))
@@ -120,6 +135,64 @@
                    false)))
       (recur))))
 
+(defmacro with-canvas
+  ([canvas-var surface-view action]
+     `(with-canvas ~canvas-var ~surface-view ~action nil))
+  ([canvas-var surface-view action post-action]
+     `(if-let [surface-canvas# ^Canvas (.. ~surface-view (getHolder) (lockCanvas))]
+        (let [~canvas-var ^Canvas @(.drawing-canvas ^ViewState (.view_state ~surface-view))]
+          (try
+            ~action
+            (. surface-canvas#
+               drawBitmap
+               ^Bitmap @(.drawing-bitmap ^ViewState (.view_state ~surface-view))
+               0.0
+               0.0
+               nil)
+            (finally
+              ~post-action
+              (.. ~surface-view (getHolder) (unlockCanvasAndPost surface-canvas#)))))
+        (log "Unexpected error: lockCanvas returned nil"))))
+
+(defn ^Thread make-drawing-thread [^org.turtle.geometry.TurtleView this]
+  (let [msg-queue ^ConcurrentLinkedQueue (.message-queue ^ViewState (.view_state this))]
+    (new Thread
+         (fn []
+           (log "Drawing thread's born")
+           (loop []
+             (when @(.surface-available? ^ViewState (.view_state this))
+               (if-let [msg (.peek msg-queue)]
+                 (case (msg :type)
+                   :plain
+                   (let [{:keys [action]} msg]
+                     (with-canvas canvas this
+                       (action canvas)
+                       (.poll msg-queue)))
+                   :animation
+                   ;; if type is :animation then action is a function of
+                   ;; two argumetns: canvas and $$ t \in \left[ 0, 1 \right] $$
+                   (let [{:keys [action duration pause-time]} msg
+                         start-time (. java.lang.System currentTimeMillis)]
+                     (with-canvas canvas this
+                       (action canvas 0))
+                     (Thread/sleep pause-time 0)
+                     (loop []
+                       (let [curr-time (. java.lang.System currentTimeMillis)
+                             diff (Math/abs (- curr-time start-time))]
+                         (when (< diff duration)
+                           (with-canvas canvas this
+                             (action canvas (/ diff duration)))
+                           (Thread/sleep pause-time 0)
+                           (recur))))
+                     (with-canvas canvas this
+                       (action canvas 1))
+                     (Thread/sleep pause-time 0)
+                     ;; completed action or not - remove it anyway
+                     (.poll msg-queue)))
+                 (java.lang.Thread/sleep 100 0))
+               (recur)))
+           (log "Drawing thread dies")))))
+
 ;;;; activity functions
 
 (def ^{:dynamic true} *activity* (atom nil))
@@ -131,7 +204,7 @@
 (defn hide-progress-bar [^org.turtle.geometry.TurtleGraphics activity]
   (. activity setProgressBarIndeterminateVisibility false))
 
-(defrecord ActivityState [;;^org.turtle.geometry.TurtleView
+(defrecord ActivityState [ ;;^org.turtle.geometry.TurtleView
                           drawing-area
                           ^EditText program-source-editor
                           ^TextView error-output
@@ -146,16 +219,16 @@
                       (atom nil :meta {:tag Menu}))])
 
 
-(defn make-test-task [^Activity activity
-                      on-start
-                      update
-                      on-end]
+(defn make-async-task [^Activity activity
+                       on-start
+                       update
+                       on-end]
   (let [run-on-ui-thread (fn [action]
                            (. activity runOnUiThread action))]
     (fn []
       (run-on-ui-thread on-start)
-      (doseq [i (take 100 (range))]
-        (Thread/sleep 100 0)
+      (doseq [i (take 10 (range))]
+        (Thread/sleep 25 0)
         (run-on-ui-thread update))
       (run-on-ui-thread on-end))))
 
@@ -189,7 +262,19 @@
                        (getText)
                        (toString))))
 
-(declare make-diminishing-grids-drawer)
+(declare make-diminishing-grids-drawer draw-line-interpolated color->paint)
+
+(defn send-drawing-command [^org.turtle.geometry.TurtleGraphics activity
+                            msg]
+  (if (and (contains? msg :type)
+           (contains? #{:plain :animation} (msg :type)))
+    (.add ^ConcurrentLinkedQueue
+          (.message-queue ^ViewState
+                          (.view_state ^org.turtle.geometry.TurtleView
+                                       @(.drawing-area ^ActivityState
+                                                       (.state activity))))
+          msg)
+    (log "Error: attempt to send invalid message: %s" msg)))
 
 (defn -onCreate [^org.turtle.geometry.TurtleGraphics this
                  ^android.os.Bundle bundle]
@@ -224,35 +309,64 @@
      setOnTouchListener
      (make-double-tap-handler (fn [] (log "Touched error output"))))
 
-
-  (let [^org.turtle.geometry.TurtleGraphics activity this
-        ^Button button (. this findViewById (resource :button_run))]
+  (let [activity ^org.turtle.geometry.TurtleGraphics this
+        button ^Button (. this findViewById (resource :button_run))]
     (. button
        setOnClickListener
        (proxy [android.view.View$OnClickListener] []
          (onClick [^View button]
-           ;; (. @(.drawing-area ^ActivityState (.state activity)) invalidate)
-           (let [drawer (make-diminishing-grids-drawer)]
-             (reset! (.drawing-func (.view_state
-                                     ^org.turtle.geometry.TurtleView
-                                     @(.drawing-area ^ActivityState
-                                                     (.state activity))))
-                     (fn [^Canvas canvas]
-                       (let [delay (text-input->int
-                                    @(.delay-entry ^ActivityState (.state activity)))]
-                         (. canvas drawColor Color/WHITE)
-                         (drawer canvas)
-                         (Thread/sleep delay 0)))))
-           (. @*task-runner* execute
-              (make-test-task activity
-                              (fn []
-                                (show-progress-bar activity)
-                                (. button setEnabled false))
-                              (fn [])
-                              (fn []
-                                (hide-progress-bar activity)
-                                (. button setEnabled true))))
-           (log "Clicked run button"))))))
+           (let [delay (text-input->int
+                        @(.delay-entry ^ActivityState (.state activity)))]
+             (send-drawing-command activity
+                                   {:type :plain
+                                    :action
+                                    (fn [^Canvas canvas]
+                                      (. canvas drawColor Color/WHITE)
+                                      (Thread/sleep delay 0))})
+             (send-drawing-command activity
+                                   {:type :animation
+                                    :action
+                                    (fn [^Canvas canvas t]
+                                      (draw-line-interpolated canvas
+                                                              t
+                                                              0
+                                                              0
+                                                              (.getWidth canvas)
+                                                              (.getHeight canvas)
+                                                              (color->paint Color/BLACK)))
+                                    :duration 5000
+                                    :pause-time delay}))
+           (log "Clicked run button")))))
+
+  ;; (let [^org.turtle.geometry.TurtleGraphics activity this
+  ;;       ^Button button (. this findViewById (resource :button_run))
+  ;;       drawer (make-diminishing-grids-drawer)]
+  ;;   (. button
+  ;;      setOnClickListener
+  ;;      (proxy [android.view.View$OnClickListener] []
+  ;;        (onClick [^View button]
+  ;;          ;; (. @(.drawing-area ^ActivityState (.state activity)) invalidate)
+  ;;          (.add @(.message-queue ^ViewState
+  ;;                                 (.view_state ^org.turtle.geometry.TurtleView
+  ;;                                              @(.drawing-area ^ActivityState
+  ;;                                                              (.state activity))))
+  ;;                (fn [^Canvas canvas]
+  ;;                  (let [delay (text-input->int
+  ;;                               @(.delay-entry ^ActivityState (.state activity)))]
+  ;;                    (. canvas drawColor Color/WHITE)
+  ;;                    (drawer canvas)
+  ;;                    (Thread/sleep delay 0))))
+  ;;          ;; (. @*task-runner* execute
+  ;;          ;;    (make-async-task activity
+  ;;          ;;                     (fn []
+  ;;          ;;                       (show-progress-bar activity)
+  ;;          ;;                       (. button setEnabled false))
+  ;;          ;;                     (fn [])
+  ;;          ;;                     (fn []
+  ;;          ;;                       (hide-progress-bar activity)
+  ;;          ;;                       (. button setEnabled true))))
+  ;;          (log "Clicked run button")))))
+  )
 
 
 
@@ -315,8 +429,18 @@
       (draw-grid canvas (first @ps) (color->paint Color/BLACK))
       (reset! ps (rest @ps)))))
 
+;; $$ t \in \left[ 0, 1 \right] $$
+(defn draw-line-interpolated [^Canvas canvas t startx starty endx endy paint]
+  (let [dx (- endx startx)
+        dy (- endy starty)]
+    (. canvas drawLine
+       startx
+       starty
+       (+ startx (* dx t))
+       (+ starty (* dy t))
+       paint)))
 
 
 ;; Local Variables:
-;; compile-command: "lein do droid code-gen, droid compile, droid create-dex, droid apk, droid install, droid run"
+;; compile-command: "LEIN_JAVA_CMD=/usr/lib/jvm/java-7-openjdk-amd64/jre/bin/java lein do droid code-gen, droid compile, droid create-dex, droid apk, droid install, droid run"
 ;; End:
