@@ -13,7 +13,7 @@
   (:import [org.turtle.geometry.R]
            [android.app Activity]
            [android.content Context]
-           [android.graphics Bitmap Canvas Color Paint Rect]
+           [android.graphics Bitmap BitmapFactory Canvas Color Paint Rect]
            [android.os AsyncTask]
            [android.view Menu MenuInflater MenuItem]
            [android.view MotionEvent SurfaceHolder SurfaceView View Window]
@@ -45,6 +45,8 @@
                 org.turtle.geometry.R$layout
                 (= :menu resource-type)
                 org.turtle.geometry.R$menu
+                (= :drawable resource-type)
+                org.turtle.geometry.R$drawable
                 :else
                 (throw java.lang.RuntimeException
                        (str "invalid resource type " resource-type)))
@@ -136,22 +138,31 @@
       (recur))))
 
 (defmacro with-canvas
-  ([canvas-var surface-view action]
-     `(with-canvas ~canvas-var ~surface-view ~action nil))
-  ([canvas-var surface-view action post-action]
+  "action will be executed with canvas-var bound to drawing canvas whole
+contents is stored in drawing bitmap and will be preserved between
+different actions.
+
+after-action will be executed with canvas-var bounded to the
+resulting canvas with drawing-bitmap drawn on. Content of this canvas will
+not be preserved"
+  ([canvas-var surface-view action after-action]
+     `(with-canvas ~canvas-var ~surface-view ~action ~after-action nil))
+  ([canvas-var surface-view action after-action post-action]
      `(if-let [surface-canvas# ^Canvas (.. ~surface-view (getHolder) (lockCanvas))]
-        (let [~canvas-var ^Canvas @(.drawing-canvas ^ViewState (.view_state ~surface-view))]
-          (try
-            ~action
-            (. surface-canvas#
-               drawBitmap
-               ^Bitmap @(.drawing-bitmap ^ViewState (.view_state ~surface-view))
-               0.0
-               0.0
-               nil)
-            (finally
-              ~post-action
-              (.. ~surface-view (getHolder) (unlockCanvasAndPost surface-canvas#)))))
+        (try
+          (let [~canvas-var ^Canvas @(.drawing-canvas ^ViewState (.view_state ~surface-view))]
+            ~action)
+          (. surface-canvas#
+             drawBitmap
+             ^Bitmap @(.drawing-bitmap ^ViewState (.view_state ~surface-view))
+             0.0
+             0.0
+             nil)
+          (let [~canvas-var ^Canvas surface-canvas#]
+            ~after-action)
+          (finally
+            ~post-action
+            (.. ~surface-view (getHolder) (unlockCanvasAndPost surface-canvas#))))
         (log "Unexpected error: lockCanvas returned nil"))))
 
 (defn ^Thread make-drawing-thread [^org.turtle.geometry.TurtleView this]
@@ -164,28 +175,40 @@
                (if-let [msg (.peek msg-queue)]
                  (case (msg :type)
                    :plain
-                   (let [{:keys [action]} msg]
+                   (let [{:keys [actions after-actions]} msg]
                      (with-canvas canvas this
-                       (action canvas)
+                       (dorun
+                        (map #(% canvas) actions))
+                       (dorun
+                        (map #(% canvas) after-actions))
                        (.poll msg-queue)))
                    :animation
-                   ;; if type is :animation then action is a function of
+                   ;; if type is :animation then actions is a seq of functions of
                    ;; two argumetns: canvas and $$ t \in \left[ 0, 1 \right] $$
-                   (let [{:keys [action duration pause-time]} msg
+                   (let [{:keys [actions after-actions duration pause-time]} msg
                          start-time (. java.lang.System currentTimeMillis)]
                      (with-canvas canvas this
-                       (action canvas 0))
+                       (dorun
+                        (map #(% canvas 0) actions))
+                       (dorun
+                        (map #(% canvas 0) after-actions)))
                      (Thread/sleep pause-time 0)
                      (loop []
                        (let [curr-time (. java.lang.System currentTimeMillis)
                              diff (Math/abs (- curr-time start-time))]
                          (when (< diff duration)
                            (with-canvas canvas this
-                             (action canvas (/ diff duration)))
+                             (dorun
+                              (map #(% canvas (/ diff duration)) actions))
+                             (dorun
+                              (map #(% canvas (/ diff duration)) after-actions)))
                            (Thread/sleep pause-time 0)
                            (recur))))
                      (with-canvas canvas this
-                       (action canvas 1))
+                       (dorun
+                        (map #(% canvas 1) actions))
+                       (dorun
+                        (map #(% canvas 1) after-actions)))
                      (Thread/sleep pause-time 0)
                      ;; completed action or not - remove it anyway
                      (.poll msg-queue)))
@@ -304,13 +327,16 @@
 
   (. ^EditText @(.program-source-editor ^ActivityState (.state this))
      setOnTouchListener
-     (make-double-tap-handler (fn [] (log "Touched source editor"))))
+     (make-double-tap-handler (fn [] (log "Tapped source editor twice"))))
   (. ^TextView @(.error-output ^ActivityState (.state this))
      setOnTouchListener
-     (make-double-tap-handler (fn [] (log "Touched error output"))))
+     (make-double-tap-handler (fn [] (log "Tapped error output twice"))))
 
   (let [activity ^org.turtle.geometry.TurtleGraphics this
-        button ^Button (. this findViewById (resource :button_run))]
+        button ^Button (. this findViewById (resource :button_run))
+        turtle-bitmap ^Bitmap (BitmapFactory/decodeResource
+                               (. activity getResources)
+                               (resource :drawable :turtle_marker))]
     (. button
        setOnClickListener
        (proxy [android.view.View$OnClickListener] []
@@ -319,53 +345,50 @@
                         @(.delay-entry ^ActivityState (.state activity)))]
              (send-drawing-command activity
                                    {:type :plain
-                                    :action
-                                    (fn [^Canvas canvas]
-                                      (. canvas drawColor Color/WHITE)
-                                      (Thread/sleep delay 0))})
-             (send-drawing-command activity
-                                   {:type :animation
-                                    :action
-                                    (fn [^Canvas canvas t]
-                                      (draw-line-interpolated canvas
-                                                              t
-                                                              0
-                                                              0
-                                                              (.getWidth canvas)
-                                                              (.getHeight canvas)
-                                                              (color->paint Color/BLACK)))
-                                    :duration 5000
-                                    :pause-time delay}))
+                                    :actions
+                                    [(fn [^Canvas canvas]
+                                       (. canvas drawColor Color/WHITE)
+                                       (Thread/sleep delay 0))]})
+             (let [turtle-center-x ^double (/ (.getWidth turtle-bitmap) 2)
+                   turtle-center-y ^double (/ (.getHeight turtle-bitmap) 2)]
+               (send-drawing-command
+                activity
+                {:type :animation
+                 :actions
+                 [(fn [^Canvas canvas t]
+                    (draw-line-interpolated canvas
+                                            t
+                                            0
+                                            0
+                                            (.getWidth canvas)
+                                            (.getHeight canvas)
+                                            (color->paint Color/BLACK)))]
+                 :after-actions
+                 [(fn [^Canvas canvas t]
+                    (. canvas save)
+                    (. canvas translate
+                       ^double (- (* t (.getWidth canvas)) turtle-center-x)
+                       ^double (- (* t (.getHeight canvas)) turtle-center-y))
+                    (. canvas rotate (* t 360) turtle-center-x turtle-center-y)
+                    (. canvas drawBitmap
+                       ^Bitmap turtle-bitmap
+                       0.0
+                       0.0
+                       nil)
+                    (. canvas restore))]
+                 :duration 10000
+                 :pause-time delay})))
            (log "Clicked run button")))))
 
-  ;; (let [^org.turtle.geometry.TurtleGraphics activity this
-  ;;       ^Button button (. this findViewById (resource :button_run))
-  ;;       drawer (make-diminishing-grids-drawer)]
-  ;;   (. button
-  ;;      setOnClickListener
-  ;;      (proxy [android.view.View$OnClickListener] []
-  ;;        (onClick [^View button]
-  ;;          ;; (. @(.drawing-area ^ActivityState (.state activity)) invalidate)
-  ;;          (.add @(.message-queue ^ViewState
-  ;;                                 (.view_state ^org.turtle.geometry.TurtleView
-  ;;                                              @(.drawing-area ^ActivityState
-  ;;                                                              (.state activity))))
-  ;;                (fn [^Canvas canvas]
-  ;;                  (let [delay (text-input->int
-  ;;                               @(.delay-entry ^ActivityState (.state activity)))]
-  ;;                    (. canvas drawColor Color/WHITE)
-  ;;                    (drawer canvas)
-  ;;                    (Thread/sleep delay 0))))
-  ;;          ;; (. @*task-runner* execute
-  ;;          ;;    (make-async-task activity
-  ;;          ;;                     (fn []
-  ;;          ;;                       (show-progress-bar activity)
-  ;;          ;;                       (. button setEnabled false))
-  ;;          ;;                     (fn [])
-  ;;          ;;                     (fn []
-  ;;          ;;                       (hide-progress-bar activity)
-  ;;          ;;                       (. button setEnabled true))))
-  ;;          (log "Clicked run button")))))
+  ;; (. @*task-runner* execute
+  ;;    (make-async-task activity
+  ;;                     (fn []
+  ;;                       (show-progress-bar activity)
+  ;;                       (. button setEnabled false))
+  ;;                     (fn [])
+  ;;                     (fn []
+  ;;                       (hide-progress-bar activity)
+  ;;                       (. button setEnabled true))))
   )
 
 

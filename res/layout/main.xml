@@ -88,7 +88,7 @@
                   android:layout_height="wrap_content"
                   android:orientation="horizontal"
                   android:padding="@dimen/padding"
-                  android:text="100"
+                  android:text="10"
                   android:textSize="@dimen/font_size"
                   android:typeface="monospace"
                   android:numeric="integer"
