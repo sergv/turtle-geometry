@@ -99,7 +99,7 @@
                        (getText)
                        (toString))))
 
-(declare make-diminishing-grids-drawer draw-line-interpolated color->paint)
+(declare make-diminishing-grids-drawer draw-line-interpolated)
 (declare eval-turtle-program)
 
 (defn -onCreate [^org.turtle.geometry.TurtleGraphics this
@@ -162,51 +162,51 @@
                                27
                                50
                                true)]
-    (. button
-       setOnClickListener
-       (proxy [android.view.View$OnClickListener] []
-         (onClick [^View button]
-           (let [delay (text-input->int
-                        @(.delay-entry ^ActivityState (.state activity)))]
-             (send-drawing-command @(.drawing-area ^ActivityState
-                                                   (.state activity))
-                                   {:type :plain
-                                    :actions
-                                    (fn [^Canvas canvas]
-                                      (. canvas drawColor Color/WHITE)
-                                      (Thread/sleep delay 0))})
+    (.setOnClickListener
+     button
+     (proxy [android.view.View$OnClickListener] []
+       (onClick [^View button]
+         (let [delay (text-input->int
+                      @(.delay-entry ^ActivityState (.state activity)))]
+           (send-drawing-command @(.drawing-area ^ActivityState
+                                                 (.state activity))
+                                 {:type :plain
+                                  :actions
+                                  (fn [^Canvas canvas]
+                                    (.drawColor canvas Color/WHITE)
+                                    (Thread/sleep delay 0))})
 
-             (let [turtle-center-x ^double (/ (.getWidth turtle-bitmap) 2)
-                   turtle-center-y ^double (/ (.getHeight turtle-bitmap) 2)]
-               (send-drawing-command
-                @(.drawing-area ^ActivityState
-                                (.state activity))
-                {:type :animation
-                 :anim-actions
-                 (fn [^Canvas canvas t]
-                   (draw-line-interpolated canvas
-                                           t
-                                           0
-                                           0
-                                           (.getWidth canvas)
-                                           (.getHeight canvas)
-                                           (color->paint Color/BLACK)))
-                 :anim-after-actions
-                 (fn [^Canvas canvas t]
-                   (. canvas save)
-                   (. canvas translate
-                      ^double (- (* t (.getWidth canvas)) turtle-center-x)
-                      ^double (- (* t (.getHeight canvas)) turtle-center-y))
-                   (. canvas rotate (* t 360) turtle-center-x turtle-center-y)
-                   (. canvas drawBitmap
-                      ^Bitmap turtle-bitmap
-                      0.0
-                      0.0
-                      nil)
-                   (. canvas restore))
-                 :duration 10000
-                 :pause-time delay})))
-           (log "Clicked run button"))))))
+           (let [turtle-center-x ^double (/ (.getWidth turtle-bitmap) 2)
+                 turtle-center-y ^double (/ (.getHeight turtle-bitmap) 2)]
+             (send-drawing-command
+              @(.drawing-area ^ActivityState
+                              (.state activity))
+              {:type :animation
+               :anim-actions
+               (fn [^Canvas canvas t]
+                 (draw-line-interpolated canvas
+                                         t
+                                         0
+                                         0
+                                         (.getWidth canvas)
+                                         (.getHeight canvas)
+                                         (color->paint Color/BLACK)))
+               :anim-after-actions
+               (fn [^Canvas canvas t]
+                 (. canvas save)
+                 (. canvas translate
+                    ^double (- (* t (.getWidth canvas)) turtle-center-x)
+                    ^double (- (* t (.getHeight canvas)) turtle-center-y))
+                 (. canvas rotate (* t 360) turtle-center-x turtle-center-y)
+                 (. canvas drawBitmap
+                    ^Bitmap turtle-bitmap
+                    0.0
+                    0.0
+                    nil)
+                 (. canvas restore))
+               :duration 10000
+               :pause-time delay})))
+         (log "Clicked run button"))))))
 
 
 

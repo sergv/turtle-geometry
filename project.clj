@@ -23,16 +23,24 @@ Intended for use with Abelson's book going under the same name."
   :profiles {:dev {:dependencies [[org.clojure/tools.nrepl "0.2.1"]
                                   ;; [android/tools.nrepl "0.2.0-bigstack"]
                                   ]
-                   :android {:aot :all-with-unused}}
+                   :android {:aot :all-with-unused
+                             :repl-local-port 10001
+                             :repl-device-port 10001
+                             :start-nrepl-server true}}
              :release {:android
                        {;; Specify the path to your private
                         ;; keystore and the the alias of the
                         ;; key you want to sign APKs with.
                         ;; :keystore-path "/home/user/.android/private.keystore"
                         ;; :key-alias "mykeyalias"
-                        :aot :all}}}
+                        :aot :all
+                        :keystore-path "/home/sergey/projects/android/keystore"
+                        :key-alias "qwerty13"
+                        :keypass "qwerty13"
+                        :storepass "qwerty13"
+                        :start-nrepl-server false}}}
 
-  ;; :repl-options {:init-ns org.accel.clojure.AccelerationTracker
+  ;; :repl-options {:init-ns org.turtle.geometry.TurtleGraphics
   ;;                ;; This expression will run when first opening a REPL, in the
   ;;                ;; namespace from :init-ns or :main if specified.
   ;;                :init nil

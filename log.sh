@@ -9,7 +9,7 @@ if [ "$1" != "no-clear" ]; then
     adb logcat -c
 fi
 adb logcat | \
-    awk '/AndroidRuntime|TurtleGeometry|stdout|stderr|System\.out/ && !/Multiwindow|MultiWindowManagerService/ { sub(/^I\/System\.out\([0-9 ]+\):/, ""); print }'
+    awk '/AndroidRuntime|TurtleGeometry|IndependentDrawer|stdout|stderr|System\.out/ && !/Multiwindow|MultiWindowManagerService/ { sub(/^I\/System\.out\([0-9 ]+\):/, ""); print }'
 
 exit 0
 
