@@ -19,7 +19,7 @@ Intended for use with Abelson's book going under the same name."
   :repositories [["local" "file:///home/sergey/.m2/repository/"]]
   :dependencies [[android/clojure "1.5.0"]
                  [neko/neko "2.0.0-beta1"]
-                 [android-utils/android-utils "0.2.0"]]
+                 [android-utils/android-utils "0.3.0"]]
   :profiles {:dev {:dependencies [[org.clojure/tools.nrepl "0.2.1"]
                                   ;; [android/tools.nrepl "0.2.0-bigstack"]
                                   ]
@@ -52,3 +52,9 @@ Intended for use with Abelson's book going under the same name."
             :min-version "10"
             :target-version "15"
             :aot-exclude-ns ["clojure.parallel"]})
+
+
+;; Local Variables:
+;; clojure-compile/lein-command: "LEIN_JAVA_CMD=/usr/lib/jvm/java-7-openjdk-amd64/jre/bin/java lein with-profiles %s do droid code-gen, droid compile, droid create-dex, droid apk, droid install, droid run"
+;; nrepl-server-command: "lein do droid forward-port, droid repl :headless"
+;; End:

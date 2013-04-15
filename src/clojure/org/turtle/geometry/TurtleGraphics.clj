@@ -33,6 +33,7 @@
         [neko.init]
         [android.clojure.util :only (make-ui-dimmer make-double-tap-handler)]
         [android.clojure.IndependentDrawer :only (send-drawing-command)]
+        [android.clojure.graphic :only (color->paint draw-grid)]
         ;; [org.turtle.geometry.Eval]
         ))
 
@@ -217,27 +218,6 @@
 
 ;;;; graphics and other functions
 
-(defn color->paint
-  ([argb]
-     (let [p (new Paint)]
-       (. p setColor argb)
-       p))
-  ([alpha red green blue]
-     (color->paint (Color/argb alpha red green blue))))
-
-(defn draw-grid [^Canvas canvas
-                 n
-                 ^Paint paint]
-  (let [width (. canvas getWidth)
-        height (. canvas getHeight)
-        dx (/ width n)
-        dy (/ height n)]
-    (loop [i 0]
-      (. canvas drawLine (* i dx) 0 (* i dx) height paint)
-      (. canvas drawLine 0 (* i dy) width (* i dy) paint)
-      (when (not= i n)
-        (recur (+ i 1))))))
-
 
 (defn square [x] (* x x))
 
@@ -318,7 +298,3 @@
                  (read program-text))
                 (catch Exception e
                   (.setText @(.program-source-editor ^ActivityState (.state activity)))))))))))
-
-;; Local Variables:
-;; compile-command: "LEIN_JAVA_CMD=/usr/lib/jvm/java-7-openjdk-amd64/jre/bin/java lein do droid code-gen, droid compile, droid create-dex, droid apk, droid install, droid run"
-;; End:
