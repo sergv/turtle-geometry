@@ -19,7 +19,7 @@ Intended for use with Abelson's book going under the same name."
   :repositories [["local" "file:///home/sergey/.m2/repository/"]]
   :dependencies [[android/clojure "1.5.0"]
                  [neko/neko "2.0.0-beta1"]
-                 [android-utils/android-utils "0.3.0"]]
+                 [android-utils/android-utils "0.4.0"]]
   :profiles {:dev {:dependencies [[org.clojure/tools.nrepl "0.2.1"]
                                   ;; [android/tools.nrepl "0.2.0-bigstack"]
                                   ]
