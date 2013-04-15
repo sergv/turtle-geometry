@@ -43,17 +43,13 @@
 (defmacro resource
   ([id] `(resource :id ~id))
   ([resource-type resource-name]
-     `(. ~(cond (= :id resource-type)
-                org.turtle.geometry.R$id
-                (= :layout resource-type)
-                org.turtle.geometry.R$layout
-                (= :menu resource-type)
-                org.turtle.geometry.R$menu
-                (= :drawable resource-type)
-                org.turtle.geometry.R$drawable
-                :else
-                (throw java.lang.RuntimeException
-                       (str "invalid resource type " resource-type)))
+     `(. ~(case resource-type
+            :id       org.turtle.geometry.R$id
+            :layout   org.turtle.geometry.R$layout
+            :menu     org.turtle.geometry.R$menu
+            :drawable org.turtle.geometry.R$drawable
+            (throw java.lang.RuntimeException
+                   (str "invalid resource type: " resource-type)))
          ~(symbol (name resource-name)))))
 
 ;;;; activity functions
