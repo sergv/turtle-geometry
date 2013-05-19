@@ -7,6 +7,7 @@
   <string name="label_stop">Stop</string>
   <string name="label_save">Save</string>
   <string name="label_load">Load</string>
+  <string name="label_reindent">Reindent</string>
   <string name="delay_label">Delay</string>
   <string name="delay_units_label">ms</string>
 

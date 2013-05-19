@@ -28,7 +28,7 @@ Intended for use with Abelson's book going under the same name."
                              :repl-device-port 10001
                              :start-nrepl-server true}}
              :release {:android
-                       {;; Specify the path to your private
+                       { ;; Specify the path to your private
                         ;; keystore and the the alias of the
                         ;; key you want to sign APKs with.
                         ;; :keystore-path "/home/user/.android/private.keystore"
@@ -49,7 +49,7 @@ Intended for use with Abelson's book going under the same name."
   ;;                :host "localhost"
   ;;                :port 10001}
 
-  :plugins [[lein-droid "0.1.0-preview2-enhanced-dex"]]
+  :plugins [[lein-droid "0.1.0-preview3-enhanced-dex"]]
   :android {:sdk-path "/home/sergey/projects/android/android-sdk-linux"
 
             ;; Uncomment this if dexer fails with OutOfMemoryException
@@ -57,9 +57,9 @@ Intended for use with Abelson's book going under the same name."
             :dex-opts ["-JXmx4096M"]
             :dex-aux-opts ["--num-threads=4" "--statistics" ]
 
-            :min-version "10"
+            :min-version "11"
             :target-version "15"
-            :aot-exclude-ns ["clojure.parallel"]})
+            :aot-exclude-ns ["clojure.parallel" "clojure.core.reducers"]})
 
 
 ;; Local Variables:

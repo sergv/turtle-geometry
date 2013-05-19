@@ -17,7 +17,7 @@
               android:clickable="true"
               android:layout_width="wrap_content"
               android:layout_height="wrap_content"
-              android:text="Hello, Turtle Graphics!"
+              android:text=""
               android:hint="Enter your turtle program here"
               android:padding="@dimen/padding"
               android:textSize="@dimen/font_size"
@@ -27,6 +27,11 @@
               android:lines="@integer/program_input_max_lines"
               android:scrollHorizontally="true"
               />
+
+    <LinearLayout android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:orientation="vertical"
+                  android:gravity="top">
 
       <LinearLayout android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -53,6 +58,12 @@
                 android:text="@string/label_stop"
                 android:padding="@dimen/button_padding"
                 />
+      </LinearLayout>
+
+      <LinearLayout android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="left">
 
         <Button android:id="@+id/button_save"
                 android:layout_width="wrap_content"
@@ -67,43 +78,51 @@
                 android:text="@string/label_load"
                 android:padding="@dimen/button_padding"
                 />
+
+        <Button android:id="@+id/button_reindent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_reindent"
+                android:padding="@dimen/button_padding"
+                />
       </LinearLayout>
+    </LinearLayout>
 
-      <LinearLayout android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="left">
-
-        <TextView android:text="@string/delay_label"
-                  android:layout_width="wrap_content"
+    <LinearLayout android:layout_width="wrap_content"
                   android:layout_height="wrap_content"
                   android:orientation="horizontal"
-                  android:padding="@dimen/padding"
-                  android:textSize="@dimen/font_size"
-                  android:typeface="monospace"
-                  />
+                  android:gravity="left">
 
-        <EditText android:id="@+id/delay_entry"
-                  android:layout_width="wrap_content"
-                  android:layout_height="wrap_content"
-                  android:orientation="horizontal"
-                  android:padding="@dimen/padding"
-                  android:text="10"
-                  android:textSize="@dimen/font_size"
-                  android:typeface="monospace"
-                  android:numeric="integer"
-                  />
+      <TextView android:text="@string/delay_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="@dimen/padding"
+                android:textSize="@dimen/font_size"
+                android:typeface="monospace"
+                />
 
-        <TextView android:text="@string/delay_units_label"
-                  android:layout_width="wrap_content"
-                  android:layout_height="wrap_content"
-                  android:orientation="horizontal"
-                  android:padding="@dimen/padding"
-                  android:textSize="@dimen/font_size"
-                  android:typeface="monospace"
-                  />
+      <EditText android:id="@+id/delay_entry"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="@dimen/padding"
+                android:text="10"
+                android:textSize="@dimen/font_size"
+                android:typeface="monospace"
+                android:numeric="integer"
+                />
 
-      </LinearLayout>
+      <TextView android:text="@string/delay_units_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="@dimen/padding"
+                android:textSize="@dimen/font_size"
+                android:typeface="monospace"
+                />
+
+    </LinearLayout>
 
     <TextView android:id="@+id/error_output"
               android:clickable="true"
@@ -119,26 +138,26 @@
               android:scrollHorizontally="true"
               />
 
-      <!-- <LinearLayout android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="left">
+    <!-- <LinearLayout android:layout_width="wrap_content"
+         android:layout_height="wrap_content"
+         android:orientation="horizontal"
+         android:gravity="left">
 
-        <ProgressBar android:id="@+id/progress_bar"
-                     android:layout_width="wrap_content"
-                     android:layout_height="wrap_content"
-                     android:padding="@dimen/padding"
-                     android:minWidth="@dimen/progress_bar_min_width"
-                     android:minHeight="@dimen/progress_bar_min_height"
-                     android:indeterminate="false"
-                     android:progressDrawable="@drawable/progress_circle"
-                     style="@android:style/Widget.ProgressBar.Horizontal"
-                     />
-      </LinearLayout> -->
+<ProgressBar android:id="@+id/progress_bar"
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:padding="@dimen/padding"
+android:minWidth="@dimen/progress_bar_min_width"
+android:minHeight="@dimen/progress_bar_min_height"
+android:indeterminate="false"
+android:progressDrawable="@drawable/progress_circle"
+style="@android:style/Widget.ProgressBar.Horizontal"
+/>
+</LinearLayout> -->
 
-     <!-- android:indeterminateBehavior="cycle" -->
-                     <!-- style="@android:style/Widget.ProgressBar.Large" -->
-        <!-- android:layout_marginRight="@dimen/progress_bar_right_margin" -->
+    <!-- android:indeterminateBehavior="cycle" -->
+    <!-- style="@android:style/Widget.ProgressBar.Large" -->
+    <!-- android:layout_marginRight="@dimen/progress_bar_right_margin" -->
 
 
   </LinearLayout>
