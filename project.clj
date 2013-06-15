@@ -49,7 +49,7 @@ Intended for use with Abelson's book going under the same name."
   ;;                :host "localhost"
   ;;                :port 10001}
 
-  :plugins [[lein-droid "0.1.0-preview3-enhanced-dex"]]
+  :plugins [[lein-droid "0.1.0-preview5-enhanced-dex"]]
   :android {:sdk-path "/home/sergey/projects/android/android-sdk-linux"
 
             ;; Uncomment this if dexer fails with OutOfMemoryException

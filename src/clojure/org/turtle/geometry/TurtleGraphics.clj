@@ -30,14 +30,15 @@
             TimeUnit]
 
            [android.clojure IndependentDrawer])
-  (:require [neko.init.options])
+  (:require [android.clojure.util]
+            [neko.init.options])
   (:use [clojure.tools.nrepl.server :only (start-server stop-server)]
         [clojure.pprint :only (with-pprint-dispatch
                                 pprint
                                 *print-right-margin*
                                 code-dispatch)]
         [neko.init]
-        [android.clojure.util :only (make-ui-dimmer make-double-tap-handler)]
+        [android.clojure.util :only (make-double-tap-handler)]
         [android.clojure.IndependentDrawer :only (send-drawing-command)]
         [android.clojure.graphic :only (color->paint draw-grid)]
         ;; [org.turtle.geometry.Eval]
@@ -123,7 +124,8 @@
           (.findViewById this (resource :error_output)))
   (reset! (.delay-entry ^ActivityState (.state this))
           (.findViewById this (resource :delay_entry)))
-  (make-ui-dimmer this (.findViewById this (resource :main_layout)))
+  (android.clojure.util/make-ui-dimmer (.findViewById this
+                                                      (resource :main_layout)))
 
   (.setText @(.program-source-editor ^ActivityState (.state this))
             "(do\n  (forward 100)\n  (left 90)\n  (forward 100))\n")
