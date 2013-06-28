@@ -4,6 +4,7 @@
 (ns org.turtle.geometry.TurtleGraphics
   (:gen-class :main no
               :extends android.app.Activity
+              :implements [clojure.lang.IDeref]
               :exposes-methods {onCreate superOnCreate
                                 onResume superOnResume
                                 onPause superOnPause}
@@ -29,22 +30,26 @@
             ThreadPoolExecutor
             TimeUnit]
 
+
+           ;; [org.antlr.runtime ANTLRStringStream
+           ;;  CommonTokenStream]
+           ;; [org.turtle TurtleLexer TurtleParser]
+
            [android.clojure IndependentDrawer])
   (:require [android.clojure.util]
             [neko.init.options])
-  (:use [clojure.tools.nrepl.server :only (start-server stop-server)]
-        [clojure.pprint :only (with-pprint-dispatch
+  (:use [clojure.pprint :only (with-pprint-dispatch
                                 pprint
                                 *print-right-margin*
                                 code-dispatch)]
+        [clojure.math.numeric-tower :only (sqrt)]
         [neko.init]
-        [android.clojure.util :only (make-double-tap-handler)]
-        [android.clojure.IndependentDrawer :only (send-drawing-command)]
-        [android.clojure.graphic :only (color->paint draw-grid)]
-        ;; [org.turtle.geometry.Eval]
-        ))
+        [android.clojure.util :only (defrecord* make-double-tap-handler)]
+        [android.clojure.IndependentDrawer :only (clear-drawing-queue!
+                                                  send-drawing-command)]
+        [android.clojure.graphic :only (color->paint draw-grid)]))
 
-(defn- log
+(defn log
   ([msg] (android.util.Log/d "TurtleGeometry" msg))
   ([msg & args] (log (apply format msg args))))
 
@@ -63,26 +68,32 @@
 ;;;; activity functions
 
 (def ^{:dynamic true} *activity* (atom nil))
-(def ^{:dynamic true} *task-runner* (atom nil))
+;; (def ^{:dynamic true} *task-runner* (atom nil))
 
 (defn show-progress-bar [^org.turtle.geometry.TurtleGraphics activity]
-  (. activity setProgressBarIndeterminateVisibility true))
+  (.setProgressBarIndeterminateVisibility activity true))
 
 (defn hide-progress-bar [^org.turtle.geometry.TurtleGraphics activity]
-  (. activity setProgressBarIndeterminateVisibility false))
+  (.setProgressBarIndeterminateVisibility activity false))
 
-(defrecord ActivityState [^android.clojure.IndependentDrawer drawing-area
-                          ^EditText program-source-editor
-                          ^TextView error-output
-                          ^EditText delay-entry
-                          ^Menu menu])
+(defrecord* ActivityState [^android.clojure.IndependentDrawer drawing-area
+                           ^EditText program-source-editor
+                           ^TextView error-output
+                           ^EditText duration-entry
+                           ^Menu menu
+                           ^Thread turtle-drawing-thread])
+
+(defn -deref [^org.turtle.geometry.TurtleGraphics this]
+  @(.state this))
+
 
 (defn -init []
-  [[] (ActivityState. (atom nil :meta {:tag android.clojure.IndependentDrawer})
-                      (atom nil :meta {:tag EditText})
-                      (atom nil :meta {:tag TextView})
-                      (atom nil :meta {:tag EditText})
-                      (atom nil :meta {:tag Menu}))])
+  [[] (atom (ActivityState. nil
+                            nil
+                            nil
+                            nil
+                            nil
+                            nil))])
 
 
 
@@ -94,70 +105,92 @@
 
 (defn report-error [^org.turtle.geometry.TurtleGraphics activity
                     ^String msg]
-  (.setText ^TextView @(.error-output ^ActivityState
-                                      (.state activity))
-            msg))
+  (.setText (error-output @activity) msg))
 
 (declare make-diminishing-grids-drawer draw-line-interpolated)
-(declare eval-turtle-program)
+(declare eval-turtle-program rotate-right-90)
 
 (defn -onCreate [^org.turtle.geometry.TurtleGraphics this
                  ^android.os.Bundle bundle]
   (reset! *activity* this)
-  (reset! *task-runner* (new ThreadPoolExecutor
-                             2    ;; core pool size
-                             5    ;; max threads
-                             1000 ;; keep alive time
-                             TimeUnit/MILLISECONDS
-                             (new LinkedBlockingQueue)))
+  ;; (reset! *task-runner* (new ThreadPoolExecutor
+  ;;                            2    ;; core pool size
+  ;;                            5    ;; max threads
+  ;;                            1000 ;; keep alive time
+  ;;                            TimeUnit/MILLISECONDS
+  ;;                            (new LinkedBlockingQueue)))
   (neko.init/init this :port 10001)
   (doto this
     (. superOnCreate bundle)
     (. requestWindowFeature Window/FEATURE_INDETERMINATE_PROGRESS)
     (. setContentView (resource :layout :main))
     (. setProgressBarIndeterminateVisibility false))
-  (reset! (.drawing-area ^ActivityState (.state this))
-          (.findViewById this (resource :drawing_area)))
-  (reset! (.program-source-editor ^ActivityState (.state this))
-          (.findViewById this (resource :program_input)))
-  (reset! (.error-output ^ActivityState (.state this))
-          (.findViewById this (resource :error_output)))
-  (reset! (.delay-entry ^ActivityState (.state this))
-          (.findViewById this (resource :delay_entry)))
+  (swap! (.state this)
+         assoc
+         :drawing-area (.findViewById this (resource :drawing_area))
+         :program-source-editor (.findViewById this (resource :program_input))
+         :error-output (.findViewById this (resource :error_output))
+         :duration-entry (.findViewById this (resource :duration_entry)))
   (android.clojure.util/make-ui-dimmer (.findViewById this
                                                       (resource :main_layout)))
 
-  (.setText @(.program-source-editor ^ActivityState (.state this))
+  (.setText (program-source-editor @this)
             "(do\n  (forward 100)\n  (left 90)\n  (forward 100))\n")
-  (.setOnTouchListener
-   ^EditText @(.program-source-editor ^ActivityState (.state this))
+  (.setOnTouchListener (program-source-editor @this)
 
-   (make-double-tap-handler (fn [] (log "Double tapped source editor twice"))))
-  (.setOnTouchListener
-   ^TextView @(.error-output ^ActivityState (.state this))
-   (make-double-tap-handler (fn [] (log "Double tapped error output twice"))))
+                       (make-double-tap-handler (fn [] (log "Double tapped source editor twice"))))
+  (.setOnTouchListener (error-output @this)
+                       (make-double-tap-handler (fn [] (log "Double tapped error output twice"))))
 
   (let [activity ^org.turtle.geometry.TurtleGraphics this
-        button ^Button (.findViewById this (resource :button_run))]
+        button ^Button (.findViewById this (resource :button_run))
+
+        turtle-bitmap (rotate-right-90
+                       (Bitmap/createScaledBitmap
+                        (BitmapFactory/decodeResource
+                         (.getResources this)
+                         (resource :drawable :turtle_marker))
+                        27
+                        50
+                        ;; do filtering
+                        true))]
     (.setOnClickListener
      button
      (reify android.view.View$OnClickListener
        (onClick [this button]
-         (let [delay (text-input->int
-                      @(.delay-entry ^ActivityState (.state activity)))]
-           (report-error activity "no errors yet")
-           (eval-turtle-program (str (.getText @(.program-source-editor ^ActivityState
-                                                                        (.state activity))))
-                                delay
-                                activity))
+         (let [old-turtle-thread (turtle-drawing-thread @activity)]
+           (when (or (not old-turtle-thread)
+                     (not (.isAlive old-turtle-thread)))
+             (let [turtle-thread (eval-turtle-program
+                                  (str (.getText (program-source-editor @activity)))
+                                  turtle-bitmap
+                                  activity)]
+               (report-error activity "no errors yet")
+               (swap! (.state activity)
+                      assoc
+                      :turtle-drawing-thread
+                      turtle-thread))))
          (log "Clicked run button"))))
 
     (.setOnClickListener
+     ^Button
+     (.findViewById this (resource :button_stop))
+     (reify android.view.View$OnClickListener
+       (onClick [this button]
+         (let [turtle-thread (turtle-drawing-thread @activity)]
+           (when turtle-thread
+             (.interrupt turtle-thread)
+             (swap! (.state activity) assoc :turtle-drawing-thread nil)
+             (.join turtle-thread)
+             (clear-drawing-queue! (drawing-area @activity)))))))
+
+    ;; todo: move this "button renindent" into context menu for source editor
+    (.setOnClickListener
+     ^Button
      (.findViewById this (resource :button_reindent))
      (reify android.view.View$OnClickListener
        (onClick [this button]
-         (let [editor ^TextView @(.program-source-editor ^ActivityState
-                                                         (.state activity))
+         (let [editor (program-source-editor @activity)
                out-writer ^StringWriter (StringWriter.)
                orig-contents (.getText editor)]
            (try
@@ -165,85 +198,28 @@
                        *out* out-writer]
                (with-pprint-dispatch code-dispatch
                  (pprint (read-string (str orig-contents)))
-                 (log "out-writer: %s\n"
-                      out-writer)
                  (.setText editor (str *out*))))
              (catch Exception e
                (.setText editor orig-contents)
-               (report-error activity (str "error while indenting:\n" e)))))))))
-
-  ;; (let [activity ^org.turtle.geometry.TurtleGraphics this
-  ;;       button ^Button (.findViewById this (resource :button_run))
-  ;;       turtle-bitmap ^Bitmap (Bitmap/createScaledBitmap
-  ;;                              (BitmapFactory/decodeResource
-  ;;                               (. activity getResources)
-  ;;                               (resource :drawable :turtle_marker))
-  ;;                              27
-  ;;                              50
-  ;;                              true)]
-  ;;   (.setOnClickListener
-  ;;    button
-  ;;    (proxy [android.view.View$OnClickListener] []
-  ;;      (onClick [^View button]
-  ;;        (let [delay (text-input->int
-  ;;                     @(.delay-entry ^ActivityState (.state activity)))]
-  ;;          (send-drawing-command @(.drawing-area ^ActivityState
-  ;;                                                (.state activity))
-  ;;                                {:type :plain
-  ;;                                 :actions
-  ;;                                 (fn [^Canvas canvas]
-  ;;                                   (.drawColor canvas Color/WHITE)
-  ;;                                   (Thread/sleep delay 0))})
-  ;;
-  ;;          (let [turtle-center-x ^double (/ (.getWidth turtle-bitmap) 2)
-  ;;                turtle-center-y ^double (/ (.getHeight turtle-bitmap) 2)]
-  ;;            (send-drawing-command
-  ;;             @(.drawing-area ^ActivityState
-  ;;                             (.state activity))
-  ;;             {:type :animation
-  ;;              :anim-actions
-  ;;              (fn [^Canvas canvas t]
-  ;;                (draw-line-interpolated canvas
-  ;;                                        t
-  ;;                                        0
-  ;;                                        0
-  ;;                                        (.getWidth canvas)
-  ;;                                        (.getHeight canvas)
-  ;;                                        (color->paint Color/BLACK)))
-  ;;              :anim-after-actions
-  ;;              (fn [^Canvas canvas t]
-  ;;                (. canvas save)
-  ;;                (. canvas translate
-  ;;                   ^double (- (* t (.getWidth canvas)) turtle-center-x)
-  ;;                   ^double (- (* t (.getHeight canvas)) turtle-center-y))
-  ;;                (. canvas rotate (* t 360) turtle-center-x turtle-center-y)
-  ;;                (. canvas drawBitmap
-  ;;                   ^Bitmap turtle-bitmap
-  ;;                   0.0
-  ;;                   0.0
-  ;;                   nil)
-  ;;                (. canvas restore))
-  ;;              :duration 10000
-  ;;              :pause-time delay})))
-  ;;        (log "Clicked run button")))))
-  )
+               (report-error activity (str "error while indenting:\n" e))))))))))
 
 
 
 (defn -onResume [^org.turtle.geometry.TurtleGraphics this]
-  (. this superOnResume))
+  (.superOnResume this))
 
 (defn -onPause [^org.turtle.geometry.TurtleGraphics this]
-  (. this superOnPause))
+  (.superOnPause this))
+
+;; (defn -onSaveInstanceState [^org.turtle.geometry.TurtleGraphics this
+;;                             ^android.os.Bundle bundle]
+;;   )
+;;
+;; (defn -onRestoreInstanceState [^org.turtle.geometry.TurtleGraphics this
+;;                                ^android.os.Bundle bundle]
+;;   )
 
 ;;;; graphics and other functions
-
-
-(defn square [x] (* x x))
-
-(defn divisible? "Return true if a is divisible by b without remainder."
-  [a b]
-  (= 0 (rem a b)))
 
 (defn random-color []
   (Color/rgb (rand-int 256) (rand-int 256) (rand-int 256)))
@@ -269,22 +245,6 @@
      (finally
        (.restore ^Canvas ~canvas-var))))
 
-(defn draw-bitmap-with-transform [^Canvas canvas
-                                  ^Bitmap bitmap
-                                  transform]
-  (let [bitmap-center-x ^double (/ (.getWidth bitmap) 2.0)
-        bitmap-center-y ^double (/ (.getHeight bitmap) 2.0)]
-    (with-centered-canvas canvas
-      (.translate canvas
-                  (- bitmap-center-x)
-                  (- bitmap-center-y))
-      (transform canvas [bitmap-center-x bitmap-center-y])
-      (.drawBitmap canvas
-                   bitmap
-                   0.0
-                   0.0
-                   nil))))
-
 (defn ^Bitmap rotate-right-90 [^Bitmap b]
   (let [height (.getHeight b)
         width (.getWidth b)
@@ -308,136 +268,206 @@
 
 ;;;; eval turtle program
 
+;; (defn parse-program [^String str]
+;;   (let [lexer (TurtleLexer. (ANTLRStringStream. str))
+;;         tokens (CommonTokenStream. lexer)
+;;         parser (TurtleParser. tokens)]
+;;     (.program parser)))
+
+
 (defrecord TurtleState [position ;; [x y]
                         angle    ;; in degrees
                         pen-up
-                        color])
+                        color
 
-(def turtle-draw-area (atom nil))
-;; seq of [startx starty endx endy] line segments produced by turtle
-(def turtle-lines (atom nil))
-(def turtle-state (atom nil :meta {:tag IndependentDrawer}))
+                        ;; seq of [startx starty endx endy] line segments produced by turtle
+                        lines
+                        turtle-bitmap
+                        parent-activity])
+
+(def turtle-state (atom nil))
 
 (defn ^double deg->rad [^double x]
   (* x (/ Math/PI 180.0)))
 
-(defn eval-turtle-program [program-text
-                           delay
-                           ^org.turtle.geometry.TurtleGraphics activity]
-  (let [turtle-bitmap ^Bitmap (rotate-right-90
-                               (Bitmap/createScaledBitmap
-                                (BitmapFactory/decodeResource
-                                 (.getResources activity)
-                                 (resource :drawable :turtle_marker))
-                                27
-                                50
-                                true))]
-    (reset! turtle-lines nil)
-    (reset! turtle-state (TurtleState. [0 0] 0 false Color/BLACK))
-    (reset! turtle-draw-area @(.drawing-area ^ActivityState
-                                             (.state activity)))
+(defn drawing-animation-duration [^org.turtle.geometry.TurtleGraphics  activity]
+  (text-input->int (duration-entry @activity)))
 
-    (send-drawing-command @turtle-draw-area
-                          {:type :plain
-                           :actions
-                           (fn [^Canvas canvas]
-                             (.drawColor canvas Color/WHITE))
-                           :after-actions
-                           (fn [^Canvas canvas]
-                             (let [[x y] (.position ^TurtleState @turtle-state)]
-                               (draw-bitmap-with-transform
-                                canvas
-                                turtle-bitmap
-                                (fn [^Canvas c [turtle-center-x turtle-center-y]]
-                                  (.translate canvas
-                                              (+ x turtle-center-x)
-                                              (+ y turtle-center-y))
-                                  (.rotate canvas
-                                           (.angle ^TurtleState @turtle-state)
-                                           0
-                                           0)))))})
-    (.start
-     (new Thread
-          (fn []
-            (binding [*ns* (create-ns 'org.turtle.geometry.TurtleGraphics)]
-              ;; (in-ns 'org.turtle.geometry.TurtleGraphics)
-              ;; (require '[org.turtle.geometry.TurtleGraphics :as TurtleGraphics])
-              ;; (use '[org.turtle.geometry.TurtleGraphics :only [turtle-state
-              ;;                                                  turtle-lines]])
-              (defn forward [dist]
-                (let [theta (.angle ^TurtleState @turtle-state)
-                      pos   (.position ^TurtleState @turtle-state)
-                      delta [(* dist (Math/cos (deg->rad theta)))
-                             (* dist (Math/sin (deg->rad theta)))]
-                      new-pos (map + delta pos)
-                      [old-x old-y] pos
-                      [new-x new-y] new-pos]
-                  (swap! turtle-state
-                         assoc :position new-pos)
-                  (swap! turtle-lines conj (vec (concat pos new-pos)))
-                  (send-drawing-command
-                   @turtle-draw-area
-                   {:type :animation
-                    :anim-actions
-                    (fn [^Canvas canvas t]
-                      (with-centered-canvas canvas
-                        (draw-line-interpolated canvas
-                                                t
-                                                old-x
-                                                old-y
-                                                new-x
-                                                new-y
-                                                (color->paint Color/BLACK))))
-                    :anim-after-actions
-                    (fn [^Canvas canvas t]
-                      (draw-bitmap-with-transform
-                       canvas
-                       turtle-bitmap
-                       (fn [^Canvas c [turtle-center-x turtle-center-y]]
-                         (.translate c
-                                     (+ old-x (* t (- new-x old-x)))
-                                     (+ old-y (* t (- new-y old-y))))
-                         (.rotate c
-                                  theta
-                                  turtle-center-x
-                                  turtle-center-y))))
-                    :duration 500
-                    :pause-time delay})))
-              (defn left [delta]
-                (let [theta (.angle ^TurtleState @turtle-state)
-                      [x y] (.position ^TurtleState @turtle-state)]
-                  (swap! turtle-state
-                         assoc :angle (+ delta theta))
-                  (send-drawing-command
-                   @turtle-draw-area
-                   {:type :animation
-                    :anim-actions
-                    (fn [canvas t])
-                    :anim-after-actions
-                    (fn [^Canvas canvas t]
-                      (draw-bitmap-with-transform
-                       canvas
-                       turtle-bitmap
-                       (fn [^Canvas c [turtle-center-x turtle-center-y]]
-                         (.translate c
-                                     x
-                                     y)
-                         (.rotate c
-                                  (+ (* t delta) theta)
-                                  turtle-center-x
-                                  turtle-center-y))))
-                    :duration 250
-                    :pause-time delay})))
-              (defn pen-up? []
-                (.pen-up ^TurtleState @turtle-state))
-              (try
-                (eval
-                 (read-string program-text))
-                (catch Exception e
-                  (.runOnUiThread
-                   activity
-                   (fn []
-                     (report-error activity
-                                   (str "We've got an error here:\n" e))))))))))))
+(defn draw-turtle-bitmap-at
+  ([^Canvas canvas x y]
+     (draw-turtle-bitmap-at canvas x y (.angle ^TurtleState @turtle-state)))
+  ([^Canvas canvas x y heading]
+     (let [bitmap ^Bitmap (.turtle-bitmap ^TurtleState @turtle-state)
+           bitmap-center-x ^double (/ (.getWidth bitmap) 2.0)
+           bitmap-center-y ^double (/ (.getHeight bitmap) 2.0)]
+       (with-centered-canvas canvas
+         (.translate canvas (- x bitmap-center-x) (- y bitmap-center-y))
+         (.rotate canvas
+                  heading
+                  bitmap-center-x
+                  bitmap-center-y)
+         (.drawBitmap canvas
+                      bitmap
+                      0.0
+                      0.0
+                      nil)))))
+
+
+(defn move [dist]
+  (let [tstate ^TurtleState @turtle-state
+        theta (.angle tstate)
+        pos   (.position tstate)
+        delta-x (* dist (Math/cos (deg->rad theta)))
+        delta-y (* dist (Math/sin (deg->rad theta)))
+        delta [delta-x delta-y]
+        new-pos (map + delta pos)
+        [old-x old-y] pos
+        [new-x new-y] new-pos
+        draw-line? (not (.pen-up tstate))]
+    (swap! turtle-state assoc :position new-pos)
+    (when draw-line?
+      (swap! turtle-state
+             update-in
+             [:lines]
+             conj
+             (vec (concat pos new-pos))))
+    (send-drawing-command
+     (drawing-area @(.parent-activity tstate))
+     {:type :animation
+      :anim-actions
+      (when draw-line?
+        (fn [^Canvas canvas t]
+          (with-centered-canvas canvas
+            (draw-line-interpolated canvas
+                                    t
+                                    old-x
+                                    old-y
+                                    new-x
+                                    new-y
+                                    (color->paint Color/BLACK)))))
+      :anim-after-actions
+      (fn [^Canvas canvas t]
+        (draw-turtle-bitmap-at canvas
+                               (+ old-x (* t delta-x))
+                               (+ old-y (* t delta-y))
+                               theta))
+      :duration (drawing-animation-duration (.parent-activity tstate))
+      :pause-time 0})))
+
+(defn rotate [delta]
+  (let [tstate ^TurtleState @turtle-state
+        theta (.angle tstate)
+        [x y] (.position tstate)]
+    (swap! turtle-state assoc :angle (+ delta theta))
+    (send-drawing-command
+     (drawing-area @(.parent-activity tstate))
+     {:type :animation
+      :anim-actions
+      (fn [canvas t])
+      :anim-after-actions
+      (fn [^Canvas canvas t]
+        (draw-turtle-bitmap-at canvas x y (+ (* t delta) theta)))
+      :duration (int (/ (drawing-animation-duration (.parent-activity tstate)) 2))
+      :pause-time 0})))
+
+
+(defn stop-if-interrupted []
+  (when (.isInterrupted (Thread/currentThread))
+    (throw (InterruptedException.))))
+
+(defn forward [dist]
+  (stop-if-interrupted)
+  (move dist))
+
+(defn backward [dist]
+  (stop-if-interrupted)
+  (move (- dist)))
+
+(defn left [delta]
+  (stop-if-interrupted)
+  (rotate (- delta)))
+
+(defn right [delta]
+  (stop-if-interrupted)
+  (rotate delta))
+
+(defn pen-up? []
+  (stop-if-interrupted)
+  (.pen-up ^TurtleState @turtle-state))
+
+(defn pen-up []
+  (stop-if-interrupted)
+  (swap! turtle-state
+         assoc
+         :pen-up
+         true))
+
+(defn pen-down []
+  (stop-if-interrupted)
+  (swap! turtle-state
+         assoc
+         :pen-up
+         false))
+
+(defn heading []
+  (stop-if-interrupted)
+  (.angle ^TurtleState @turtle-state))
+
+(defn set-heading [new-heading]
+  (stop-if-interrupted)
+  (swap! turtle-state assoc :theta new-heading))
+
+
+
+(defn eval-turtle-program [program-text
+                           turtle-bitmap
+                           ^org.turtle.geometry.TurtleGraphics activity]
+  (let [new-state (TurtleState. [0 0] 0 false Color/BLACK nil turtle-bitmap activity)
+        turtle-thread
+        (Thread.
+         (.getThreadGroup (Thread/currentThread))
+         (fn []
+           (send-drawing-command
+            (drawing-area @(.parent-activity ^TurtleState @turtle-state))
+            {:type :plain
+             :actions
+             (fn [^Canvas canvas]
+               (.drawColor canvas Color/WHITE))
+             :after-actions
+             (fn [^Canvas canvas]
+               (let [[x y] (.position ^TurtleState @turtle-state)]
+                 (draw-turtle-bitmap-at canvas x y)))})
+
+           (binding [*ns* (create-ns 'org.turtle.geometry.TurtleSandbox)]
+             ;; (in-ns 'org.turtle.geometry.TurtleGraphics)
+             ;; (require '[org.turtle.geometry.TurtleGraphics :as TurtleGraphics])
+             (use '[clojure.core])
+             (use '[clojure.math.numeric-tower :only (sqrt)])
+             (use '[org.turtle.geometry.TurtleGraphics
+                    :only (pen-up?
+                           pen-up pen-down
+                           forward backward
+                           left right
+                           heading set-heading
+
+                           log)])
+
+             (try
+               (eval (read-string (str "(do\n" program-text ")")))
+               (catch InterruptedException _
+                 (.runOnUiThread
+                  activity
+                  (fn []
+                    (report-error activity "Interrupted"))))
+               (catch Exception e
+                 (.runOnUiThread
+                  activity
+                  (fn []
+                    (report-error activity (str "We've got an error here:\n" e))))))))
+         "turtle eval thread"
+         (* 8 1024 1024))]
+    (reset! turtle-state new-state)
+    (.start turtle-thread)
+    turtle-thread))
 
 

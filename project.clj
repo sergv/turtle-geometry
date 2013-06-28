@@ -1,3 +1,15 @@
+
+(use '[clojure.java.io :only (file)])
+
+(def project-key-def-file "project-key.clj")
+
+(def key-def-info
+  (let [f (file project-key-def-file)]
+    (if (.exists f)
+      (read-string (slurp project-key-def-file))
+      nil)))
+
+
 (defproject turtle_geometry/turtle_geometry "0.0.1-SNAPSHOT"
   :description "Application intepreting LOGO programs in an interactive fashion.
 Intended for use with Abelson's book going under the same name."
@@ -9,7 +21,7 @@ Intended for use with Abelson's book going under the same name."
   :warn-on-reflection true
 
   :source-paths ["src/clojure"]
-  :java-source-paths ["src/java" "gen"]
+  :java-source-paths ["src/java" "bin"]
   ;; The following two definitions are optional. The default
   ;; target-path is "target", but you can change it to whatever you like.
   :target-path "bin"
@@ -19,26 +31,16 @@ Intended for use with Abelson's book going under the same name."
   :repositories [["local" "file:///home/sergey/.m2/repository/"]]
   :dependencies [[android/clojure "1.5.0"]
                  [neko/neko "2.0.0-beta1"]
-                 [android-utils/android-utils "0.4.0"]]
+                 [android-utils/android-utils "0.6.0"]
+                 [org.clojure/math.numeric-tower "0.0.2"]
+                 ;; [org.antlr/antlr "3.5"]
+                 ]
   :profiles {:dev {:dependencies [[org.clojure/tools.nrepl "0.2.1"]
                                   ;; [android/tools.nrepl "0.2.0-bigstack"]
                                   ]
-                   :android {:aot :all-with-unused
-                             :repl-local-port 10001
-                             :repl-device-port 10001
-                             :start-nrepl-server true}}
+                   :android {:aot :all-with-unused}}
              :release {:android
-                       { ;; Specify the path to your private
-                        ;; keystore and the the alias of the
-                        ;; key you want to sign APKs with.
-                        ;; :keystore-path "/home/user/.android/private.keystore"
-                        ;; :key-alias "mykeyalias"
-                        :aot :all
-                        :keystore-path "/home/sergey/projects/android/keystore"
-                        :key-alias "qwerty13"
-                        :keypass "qwerty13"
-                        :storepass "qwerty13"
-                        :start-nrepl-server false}}}
+                       {:aot :all}}}
 
   ;; :repl-options {:init-ns org.turtle.geometry.TurtleGraphics
   ;;                ;; This expression will run when first opening a REPL, in the
@@ -49,17 +51,27 @@ Intended for use with Abelson's book going under the same name."
   ;;                :host "localhost"
   ;;                :port 10001}
 
-  :plugins [[lein-droid "0.1.0-preview5-enhanced-dex"]]
-  :android {:sdk-path "/home/sergey/projects/android/android-sdk-linux"
+  :plugins [[lein-droid "0.1.0-preview5-enhanced"]]
+  :android ~(merge
+             {:sdk-path "/home/sergey/projects/android/android-sdk-linux"
+              :gen-path "bin"
 
-            ;; Uncomment this if dexer fails with OutOfMemoryException
-            ;; :force-dex-optimize true
-            :dex-opts ["-JXmx4096M"]
-            :dex-aux-opts ["--num-threads=4" "--statistics" ]
+              :enable-dynamic-compilation true
+              :start-nrepl-server true
+              :repl-device-port 10001
+              :repl-local-port 10001
 
-            :min-version "11"
-            :target-version "15"
-            :aot-exclude-ns ["clojure.parallel" "clojure.core.reducers"]})
+              :external-classes-paths ["/home/sergey/projects/android/android-sdk-linux/extras/android/support/v4/android-support-v4.jar"]
+
+              ;; Uncomment this if dexer fails with OutOfMemoryException
+              ;; :force-dex-optimize true
+              :dex-opts ["-JXmx4096M"]
+              :dex-aux-opts ["--num-threads=2" "--no-optimize"]
+
+              :min-version "11"
+              :target-version "15"
+              :aot-exclude-ns ["clojure.parallel" "clojure.core.reducers"]}
+             key-def-info))
 
 
 ;; Local Variables:
