@@ -19,9 +19,12 @@
            [android.graphics Bitmap Bitmap$Config BitmapFactory Canvas
             Color Matrix Paint Rect]
            [android.text SpannableStringBuilder]
+           [android.view
+            GestureDetector GestureDetector$SimpleOnGestureListener
+            ScaleGestureDetector ScaleGestureDetector$OnScaleGestureListener]
            [android.view Menu MenuInflater MenuItem]
            [android.view LayoutInflater MotionEvent SurfaceHolder SurfaceView
-            View ViewGroup Window]
+            View View$OnTouchListener ViewGroup Window]
            [android.widget Button EditText ProgressBar
             TabHost TabHost$TabSpec TabHost$TabContentFactory TextView]
            [android.util AttributeSet]
@@ -71,16 +74,24 @@
                  (int (/ (.getHeight ~canvas-var) 2)))
      ~@body))
 
+(defn make-identity-transform ^Matrix []
+  (Matrix.))
+
 (defn rotate-right-90 ^Bitmap [^Bitmap b]
   (let [height (.getHeight b)
         width (.getWidth b)
         half-width (/ width 2.0)
         half-height (/ height 2.0)
-        m (Matrix.)]
+        m (make-identity-transform)]
     (.preTranslate m (+ half-width) (+ half-height))
     (.setRotate m 90)
     (.postTranslate m (- half-width) (- half-height))
     (Bitmap/createBitmap b 0 0 width height m false)))
+
+(defn matrix-mult ^Matrix [^Matrix m1 ^Matrix m2]
+  (let [tmp (Matrix. m1)]
+    (.postConcat tmp m2)
+    tmp))
 
 ;;;; activity functions
 
@@ -106,6 +117,8 @@
                         ;; seq of [[startx starty] [endx endy] color] line segments produced by turtle
                         lines])
 
+(defrecord UserOptions [^boolean show-graphics-when-run])
+
 (def ^{:const true} initial-turtle-state
   (TurtleState. [0 0] [0 0] 0 false Color/BLACK []))
 
@@ -117,13 +130,15 @@
                            ^Menu menu
 
                            ^DrawState draw-state
+                           ^UserOptions user-options
 
+                           ^Matrix intermediate-transform
                            ^Thread turtle-program-thread
                            ^Matrix draw-area-view-transform
                            ^Bitmap turtle-bitmap
                            ^TurtleState turtle-state])
 
-(defn -deref [^org.turtle.geometry.TurtleGraphics this]
+(defn -deref ^ActivityState [^org.turtle.geometry.TurtleGraphics this]
   @(.state this))
 
 (defn -init []
@@ -134,7 +149,9 @@
                             nil
 
                             nil
+                            nil
 
+                            nil
                             nil
                             nil
                             nil
@@ -155,8 +172,107 @@
 (defn get-animation-duration [^org.turtle.geometry.TurtleGraphics activity]
   (text-input->int (duration-entry @activity)))
 
+(declare eval-turtle-program draw-scene
+         clear-intermed-bitmap redraw-indermed-bitmap)
 
-(declare eval-turtle-program draw-scene)
+(defn register-interaction-detectors [^org.turtle.geometry.TurtleGraphics activity
+                                      ^View root]
+  (let [pointer-id (atom nil)
+
+        make-move-transform
+        (fn ^Matrix [^MotionEvent start
+                     ^MotionEvent end]
+          (let [m (make-identity-transform)
+                id @pointer-id
+                dx (- (.getX end id) (.getX start id))
+                dy (- (.getY end id) (.getY start id))]
+            (.setTranslate m dx dy)
+            m))
+        make-scale-transform
+        (fn ^Matrix [scale-factor]
+          (let [m (make-identity-transform)
+                draw-canvas ^Canvas (get-in @activity [:draw-state :draw-canvas])
+                width (.getWidth draw-canvas)
+                height (.getHeight draw-canvas)]
+            (.setScale m
+                       scale-factor scale-factor
+                       (float (/ width 2)) (float (/ height 2)))
+            m))
+
+        update-activity-view-transform
+        (fn [^Matrix new-transform]
+          (let [old-view-transform (draw-area-view-transform @activity)]
+            (swap! (.state activity)
+                   assoc
+                   :draw-area-view-transform
+                   (matrix-mult old-view-transform new-transform)
+                   :intermediate-transform
+                   (make-identity-transform)))
+          (redraw-indermed-bitmap activity)
+          (draw-scene activity))
+
+        move-listener
+        (proxy [GestureDetector$SimpleOnGestureListener] []
+          (onDown [^MotionEvent event]
+            (reset! pointer-id (.getPointerId event 0))
+            (.onScroll ^GestureDetector$SimpleOnGestureListener this
+                       event
+                       event
+                       0
+                       0)
+            true)
+          (onScroll [^MotionEvent start
+                     ^MotionEvent current
+                     dist-x
+                     dist-y]
+            (swap! (.state activity) assoc-in
+                   [:intermediate-transform]
+                   (make-move-transform start current))
+            (draw-scene activity)
+            true)
+          (onFling [^MotionEvent start
+                    ^MotionEvent end
+                    velocity-x
+                    velocity-y]
+            (update-activity-view-transform (make-move-transform start end))
+            true))
+
+        scale-listener
+        (proxy [ScaleGestureDetector$OnScaleGestureListener] []
+          (onScaleBegin [^ScaleGestureDetector detector]
+            true)
+          (onScale [^ScaleGestureDetector detector]
+            (log "scale-listener, onScale: (.getScaleFactor detector) = %s"
+                 (.getScaleFactor detector))
+            (swap! (.state activity) assoc-in
+                   [:intermediate-transform]
+                   (make-scale-transform (.getScaleFactor detector)))
+            (draw-scene activity)
+            false)
+          (^void onScaleEnd [^ScaleGestureDetector detector]
+            (log "scale-listener, onScaleEnd: (.getScaleFactor detector) = %s"
+                 (.getScaleFactor detector))
+            (update-activity-view-transform
+             (make-scale-transform (.getScaleFactor detector)))))
+
+        move-detector (GestureDetector. activity
+                                        move-listener
+                                        nil  ;; no special Handler provided
+                                        true ;; ignore multitouch
+                                        )
+        scale-detector (ScaleGestureDetector. activity scale-listener)]
+    (.setOnTouchListener
+     root
+     (reify View$OnTouchListener
+       (^boolean onTouch [this ^View v ^MotionEvent event]
+         (let [move-result (.onTouchEvent ^GestureDetector move-detector
+                                          ^MotionEvent event)]
+           (if move-result
+             true
+             (.onTouchEvent ^ScaleGestureDetector scale-detector
+                            ^MotionEvent event))))))))
+
+
 
 (defn -onCreate [^org.turtle.geometry.TurtleGraphics this
                  ^android.os.Bundle bundle]
@@ -173,6 +289,7 @@
         inflater (.getLayoutInflater this)
 
         ^TabHost tab-host (.findViewById this (resource :main_layout))
+        graphics-tab-tag "Graphics"
         ^View editor-layout (.inflate inflater
                                       ^int (resource :layout :program_editor)
                                       nil)
@@ -196,6 +313,8 @@
                                           (resource :button_run))
         button-stop ^Button (.findViewById editor-layout
                                            (resource :button_stop))
+        button-clear ^Button (.findViewById editor-layout
+                                            (resource :button_clear))
         button-reindent ^Button (.findViewById editor-layout
                                                (resource :button_reindent))
 
@@ -217,13 +336,17 @@
            :menu nil
 
            :draw-state (DrawState. false nil nil)
+           :user-options (UserOptions. true)
 
+           :intermediate-transform (make-identity-transform) ;; creates indentity
            :turtle-program-thread nil
-           :draw-area-view-transform (Matrix.) ;; creates indentity
+           :draw-area-view-transform (make-identity-transform) ;; creates indentity
            :turtle-bitmap rotated-turtle-bitmap
            :turtle-state initial-turtle-state)
+
     (.. draw-area-view (getHolder) (addCallback this))
 
+    (register-interaction-detectors activity draw-area-view)
     (doto tab-host
       (. setup)
       (. addTab (doto (.newTabSpec tab-host "Source")
@@ -236,8 +359,8 @@
                   (. setContent (reify TabHost$TabContentFactory
                                   (createTabContent [unused-this _]
                                     error-output-layout)))))
-      (. addTab (doto (.newTabSpec tab-host "Graphics")
-                  (. setIndicator "Graphics")
+      (. addTab (doto (.newTabSpec tab-host graphics-tab-tag)
+                  (. setIndicator graphics-tab-tag)
                   (. setContent (reify TabHost$TabContentFactory
                                   (createTabContent [unused-this _]
                                     draw-area-layout))))))
@@ -256,7 +379,9 @@
                (swap! (.state activity)
                       assoc
                       :turtle-program-thread
-                      turtle-thread))))
+                      turtle-thread)))
+           (when (.show-graphics-when-run (user-options @activity))
+             (.setCurrentTabByTag tab-host graphics-tab-tag)))
          (log "Clicked run button"))))
 
     (.setOnClickListener
@@ -268,6 +393,20 @@
              (.interrupt turtle-thread)
              (swap! (.state activity) assoc :turtle-program-thread nil)
              (.join turtle-thread)
+             ;; (clear-draw-queue! (draw-area @activity))
+             )))))
+
+    (.setOnClickListener
+     button-clear
+     (reify android.view.View$OnClickListener
+       (onClick [this unused-button]
+         (let [turtle-thread (turtle-program-thread @activity)]
+           (when turtle-thread
+             (clear-intermed-bitmap activity)
+             (swap! (.state activity) assoc-in
+                    [:turtle-state]
+                    initial-turtle-state)
+             (draw-scene activity)
              ;; (clear-draw-queue! (draw-area @activity))
              )))))
 
@@ -290,6 +429,7 @@
                (report-error activity (str "error while indenting:\n" e)))))))))
 
   (.setText (program-source-editor @this)
+            ;; "(dotimes [_ 10000]\n  (forward 1.5)\n  (left 1))"
             "(forward 100)\n(left 90)\n(forward 100)\n")
   (.setOnTouchListener (program-source-editor @this)
 
@@ -317,6 +457,9 @@
 ;;                                ^android.os.Bundle bundle]
 ;;   )
 
+
+(defn clear-intermed-bitmap [^org.turtle.geometry.TurtleGraphics this]
+  (.drawColor ^Canvas (get-in @this [:draw-state :draw-canvas]) Color/WHITE))
 
 (defn -surfaceChanged [^org.turtle.geometry.TurtleGraphics this
                        ^SurfaceHolder holder
@@ -363,6 +506,55 @@
          assoc
          :surface-available? false))
 
+;;;; drawing functions
+
+(defn redraw-indermed-bitmap [^org.turtle.geometry.TurtleGraphics this]
+  (let [intermed-canvas ^Canvas (get-in @this [:draw-state :draw-canvas])]
+    (assert intermed-canvas "error: surface view drawing-canvas is nil")
+    (clear-intermed-bitmap this)
+    (with-centered-canvas intermed-canvas
+      (draw-with-page-transform
+       intermed-canvas
+       (draw-area-view-transform @this)
+
+       ;; loop over lines and keep paint so it may be reused if
+       ;; color hasn't changed for successive lines
+       (let [lines (seq (get-in @this [:turtle-state :lines]))
+             prev-color (when lines (nth (first lines) 2))
+             prev-paint (when prev-color (color->paint prev-color))]
+         (loop [lines lines
+                prev-color prev-color
+                prev-paint prev-paint]
+           (when lines
+             (let [[[startx starty] [endx endy] color] (first lines)
+                   paint (if (= prev-color color)
+                           prev-paint
+                           (color->paint color))]
+               (.drawLine intermed-canvas
+                          startx starty
+                          endx endy
+                          paint)
+               (recur (next lines)
+                      color
+                      paint)))))))))
+
+(defn add-line-to-intermed-bitmap [^org.turtle.geometry.TurtleGraphics this
+                                   [startx starty]
+                                   [endx endy]
+                                   color]
+  (let [intermed-canvas ^Canvas (get-in @this [:draw-state :draw-canvas])]
+    (assert intermed-canvas "error: surface view drawing-canvas is nil")
+
+    (with-centered-canvas intermed-canvas
+      (draw-with-page-transform
+       intermed-canvas
+       (draw-area-view-transform @this)
+
+       (.drawLine intermed-canvas
+                  startx starty
+                  endx endy
+                  (color->paint color))))))
+
 (defn draw-turtle-bitmap
   ([^Canvas canvas ^org.turtle.geometry.TurtleGraphics activity]
      (let [bitmap (turtle-bitmap @activity)
@@ -383,68 +575,48 @@
                       nil)))))
 
 (defn draw-scene [^org.turtle.geometry.TurtleGraphics this]
-  (when-not (get-in @this [:draw-state :surface-available?])
-    (throw (RuntimeException. "attempt to draw when surface is not available")))
-  (if-let [surface-canvas ^Canvas (.. (draw-area @this)
-                                      (getHolder)
-                                      (lockCanvas))]
-    (try
-      (let [view-transform (draw-area-view-transform @this)]
-        ;; this draw on intermediate-bitmap in draw-state
-        (let [intermed-canvas ^Canvas (get-in @this [:draw-state :draw-canvas])]
-          (assert intermed-canvas "error: surface view drawing-canvas is nil")
-          (with-centered-canvas intermed-canvas
-            (draw-with-page-transform
-             intermed-canvas
-             view-transform
-             ;; loop over lines and keep paint so it may be reused if
-             ;; color hasn't changed for successive lines
-             (let [lines (seq (get-in @this [:turtle-state :lines]))
-                   prev-color (when lines (nth (first lines) 2))
-                   prev-paint (when prev-color (color->paint prev-color))]
-               (loop [lines lines
-                      prev-color prev-color
-                      prev-paint prev-paint]
-                 (when lines
-                   (let [[[startx starty] [endx endy] color] (first lines)
-                         paint (if (= prev-color color)
-                                 prev-paint
-                                 (color->paint color))]
-                     (.drawLine intermed-canvas
-                                startx starty
-                                endx endy
-                                paint)
-                     (recur (next lines)
-                            color
-                            paint))))))))
-        (.drawBitmap surface-canvas
-                     ^Bitmap (get-in @this [:draw-state :intermediate-bitmap])
-                     0.0 ;; left
-                     0.0 ;; top
-                     nil ;; paint
-                     )
-        ;; draw on surface-canvas directly if you wish
-
-        (with-centered-canvas surface-canvas
+  (if (get-in @this [:draw-state :surface-available?])
+    (if-let [surface-canvas ^Canvas (.. (draw-area @this)
+                                        (getHolder)
+                                        (lockCanvas))]
+      (try
+        (let [start-time (System/currentTimeMillis)]
+          ;; this draw on intermediate-bitmap in draw-state
           (draw-with-page-transform
            surface-canvas
-           view-transform
-           ;; draw line from previous position to current position
-           (when-not (get-in @this [:turtle-state :pen-up?])
-             (let [[startx starty] (get-in @this [:turtle-state :prev-position])
-                   [currentx currenty] (get-in @this [:turtle-state :position])
-                   color (get-in @this [:turtle-state :color])]
-               (.drawLine surface-canvas
-                          startx starty
-                          currentx currenty
-                          (color->paint color))))
-           (draw-turtle-bitmap surface-canvas this))))
-      (finally
-        (.. (draw-area @this)
-            (getHolder)
-            (unlockCanvasAndPost surface-canvas))))
-    ;; if it returned nil we have nothing to do
-    (log "draw-scene: lockCanvas returned nil")))
+           (intermediate-transform @this)
+           (.drawBitmap surface-canvas
+                        ^Bitmap (get-in @this [:draw-state :intermediate-bitmap])
+                        0.0 ;; left
+                        0.0 ;; top
+                        nil ;; paint
+                        ))
+          ;; draw on surface-canvas directly if you wish
+
+          (with-centered-canvas surface-canvas
+            (draw-with-page-transform
+             surface-canvas
+             (matrix-mult (draw-area-view-transform @this)
+                          (intermediate-transform @this))
+
+             ;; draw line from previous position to current position
+             (when-not (get-in @this [:turtle-state :pen-up?])
+               (let [[startx starty] (get-in @this [:turtle-state :prev-position])
+                     [currentx currenty] (get-in @this [:turtle-state :position])
+                     color (get-in @this [:turtle-state :color])]
+                 (.drawLine surface-canvas
+                            startx starty
+                            currentx currenty
+                            (color->paint color))))
+             (draw-turtle-bitmap surface-canvas this)))
+          (log "frame took %s ms" (- (System/currentTimeMillis) start-time)))
+        (finally
+          (.. (draw-area @this)
+              (getHolder)
+              (unlockCanvasAndPost surface-canvas))))
+      ;; if it returned nil we have nothing to do
+      (log "draw-scene: lockCanvas returned nil"))
+    (log "attempt to draw when surface is not available")))
 
 
 ;;;; eval turtle program
@@ -507,7 +679,12 @@
                 (swap! (.state activity) update-in
                        [:turtle-state :lines]
                        conj
-                       (vector pos new-pos color)))))
+                       (vector pos new-pos color))
+                (add-line-to-intermed-bitmap activity
+                                             pos
+                                             new-pos
+                                             color)
+                (draw-scene activity))))
 
           (rotate [delta]
             (let [theta (get-in @activity [:turtle-state :angle])
@@ -529,7 +706,8 @@
                       (recur)))))
               (swap! (.state activity) assoc-in
                      [:turtle-state :angle]
-                     (+ theta delta))))
+                     (+ theta delta))
+              (draw-scene activity)))
 
           (forward [dist]
             (stop-if-interrupted)
@@ -595,8 +773,6 @@
                    (use '[clojure.math.numeric-tower :only (sqrt)])
 
                    (load-string program-text)))
-               ;; (let [source (str "(do\n" program-text ")")]
-               ;;   (eval (read-string source)))
                (catch InterruptedException _
                  (.runOnUiThread
                   activity
@@ -606,24 +782,9 @@
                  (.runOnUiThread
                   activity
                   (fn []
-                    (report-error activity (str "We've got an error here:\n" e))))))
-
-             ;; (binding [*ns* (create-ns 'org.turtle.geometry.TurtleSandbox)]
-             ;;   (use '[clojure.core])
-             ;;   (use '[clojure.math.numeric-tower :only (sqrt)])
-             ;;   (use '[org.turtle.geometry.TurtleGraphics
-             ;;          :only (pen-up?
-             ;;                 pen-up pen-down
-             ;;                 forward backward
-             ;;                 left right
-             ;;                 heading set-heading
-             ;;
-             ;;                 log)])
-             ;;
-             ;;   )
-             )
+                    (report-error activity (str "We've got an error here:\n" e)))))))
            "turtle program thread"
-           (* 4 1024 1024))]
+           (* 8 1024 1024))]
       (swap! (.state activity) assoc-in [:turtle-state] initial-turtle-state)
       (draw-scene activity)
       (.start turtle-thread)

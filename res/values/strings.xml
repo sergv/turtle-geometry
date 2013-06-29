@@ -4,6 +4,7 @@
   <string name="app_name">TurtleGraphics</string>
   <string name="label_run">Run</string>
   <string name="label_stop">Stop</string>
+  <string name="label_clear">Clear</string>
   <string name="label_save">Save</string>
   <string name="label_load">Load</string>
   <string name="label_reindent">Reindent</string>
