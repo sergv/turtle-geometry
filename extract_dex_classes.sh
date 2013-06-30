@@ -5,7 +5,13 @@
 # Created: Sunday, 17 March 2013
 #
 
-"$SDK_HOME/platform-tools/dexdump" -f ./bin/classes.dex | \
+target="$1"
+
+if [ -z "${target}" ]; then
+    target="./bin/classes.dex"
+fi
+
+"$SDK_HOME/platform-tools/dexdump" -f "${target}" | \
     awk "/^[ \t]*Class[ \t]*descriptor[ \t]*:[ \t]*'L[^;']*;'/" | \
     sed -r "s,^.*L([^;']*).*,\1," | \
     sort -u

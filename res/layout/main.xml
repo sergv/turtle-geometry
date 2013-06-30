@@ -1,165 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-              android:layout_width="match_parent"
-              android:layout_height="match_parent"
-              android:orientation="horizontal"
-              android:keepScreenOn="true"
-              android:gravity="left"
-              android:id="@+id/main_layout">
-
-  <LinearLayout android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="top">
-
-    <EditText android:id="@+id/program_input"
-              android:clickable="true"
-              android:layout_width="wrap_content"
-              android:layout_height="wrap_content"
-              android:text=""
-              android:hint="Enter your turtle program here"
-              android:padding="@dimen/padding"
-              android:textSize="@dimen/font_size"
-              android:typeface="monospace"
-              android:maxWidth="@dimen/program_input_max_width"
-              android:maxLines="@integer/program_input_max_lines"
-              android:lines="@integer/program_input_max_lines"
-              android:scrollHorizontally="true"
-              />
-
-    <LinearLayout android:layout_width="wrap_content"
-                  android:layout_height="wrap_content"
-                  android:orientation="vertical"
-                  android:gravity="top">
-
-      <LinearLayout android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="left">
-
-        <Button android:id="@+id/button_run"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/label_run"
-                android:padding="@dimen/button_padding"
-                />
-
-        <Button android:id="@+id/button_stop"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/label_stop"
-                android:padding="@dimen/button_padding"
-                />
-      </LinearLayout>
-
-      <LinearLayout android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="left">
-
-        <Button android:id="@+id/button_save"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/label_save"
-                android:padding="@dimen/button_padding"
-                />
-
-        <Button android:id="@+id/button_load"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/label_load"
-                android:padding="@dimen/button_padding"
-                />
-
-        <Button android:id="@+id/button_reindent"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/label_reindent"
-                android:padding="@dimen/button_padding"
-                />
-      </LinearLayout>
-    </LinearLayout>
-
-    <LinearLayout android:layout_width="wrap_content"
-                  android:layout_height="wrap_content"
-                  android:orientation="horizontal"
-                  android:gravity="left">
-
-      <TextView android:text="@string/duration_label"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="@dimen/padding"
-                android:textSize="@dimen/font_size"
-                android:typeface="monospace"
-                />
-
-      <EditText android:id="@+id/duration_entry"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="@dimen/padding"
-                android:text="@string/default_duration"
-                android:textSize="@dimen/font_size"
-                android:typeface="monospace"
-                android:numeric="integer"
-                />
-
-      <TextView android:text="@string/duration_units_label"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="@dimen/padding"
-                android:textSize="@dimen/font_size"
-                android:typeface="monospace"
-                />
-
-    </LinearLayout>
-
-    <TextView android:id="@+id/error_output"
-              android:clickable="true"
-              android:layout_width="wrap_content"
-              android:layout_height="wrap_content"
-              android:text="Errors go here"
-              android:padding="@dimen/padding"
-              android:textSize="@dimen/font_size"
-              android:typeface="monospace"
-              android:maxWidth="@dimen/error_output_max_width"
-              android:maxLines="@integer/error_output_max_lines"
-              android:lines="@integer/error_output_max_lines"
-              android:scrollHorizontally="true"
-              />
-
-    <!-- <LinearLayout android:layout_width="wrap_content"
-         android:layout_height="wrap_content"
+<TabHost xmlns:android="http://schemas.android.com/apk/res/android"
+         android:layout_width="match_parent"
+         android:layout_height="match_parent"
          android:orientation="horizontal"
-         android:gravity="left">
+         android:keepScreenOn="true"
+         android:gravity="top"
+         android:id="@+id/main_layout">
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent"
+        android:padding="0dp">
+      <TabWidget
+          android:id="@android:id/tabs"
+          android:layout_width="fill_parent"
+          android:layout_height="wrap_content" />
+      <FrameLayout
+          android:id="@android:id/tabcontent"
+          android:layout_width="fill_parent"
+          android:layout_height="fill_parent"
+          android:padding="0dp" />
+    </LinearLayout>
 
-<ProgressBar android:id="@+id/progress_bar"
-android:layout_width="wrap_content"
-android:layout_height="wrap_content"
-android:padding="@dimen/padding"
-android:minWidth="@dimen/progress_bar_min_width"
-android:minHeight="@dimen/progress_bar_min_height"
-android:indeterminate="false"
-android:progressDrawable="@drawable/progress_circle"
-style="@android:style/Widget.ProgressBar.Horizontal"
-/>
-</LinearLayout> -->
-
-    <!-- android:indeterminateBehavior="cycle" -->
-    <!-- style="@android:style/Widget.ProgressBar.Large" -->
-    <!-- android:layout_marginRight="@dimen/progress_bar_right_margin" -->
-
-
-  </LinearLayout>
-
-  <android.clojure.IndependentDrawer
-      android:id="@+id/drawing_area"
-      android:layout_width="wrap_content"
-      android:layout_height="wrap_content"
-      android:padding="@dimen/padding"
-      />
-
-</LinearLayout>
+</TabHost>

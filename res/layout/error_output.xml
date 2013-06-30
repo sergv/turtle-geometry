@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:id="@+id/error_output_layout"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:orientation="vertical"
+              android:keepScreenOn="true"
+              android:gravity="top">
+
+  <TextView xmlns:android="http://schemas.android.com/apk/res/android"
+            android:id="@+id/error_output"
+            android:clickable="true"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:text="Errors appear here"
+            android:padding="@dimen/padding"
+            android:textSize="@dimen/font_size"
+            android:typeface="monospace"
+            android:lines="@integer/error_output_max_lines"
+            android:scrollHorizontally="true"
+            />
+  <!-- android:maxWidth="@dimen/error_output_max_width" -->
+  <!-- android:maxLines="@integer/error_output_max_lines" -->
+</LinearLayout>
+
+

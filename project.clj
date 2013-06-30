@@ -30,8 +30,8 @@ Intended for use with Abelson's book going under the same name."
   ;; :local-repo "/home/sergey/.m2/repository/"
   :repositories [["local" "file:///home/sergey/.m2/repository/"]]
   :dependencies [[android/clojure "1.5.0"]
-                 [neko/neko "2.0.0-beta1"]
-                 [android-utils/android-utils "0.6.0"]
+                 [neko/neko "2.0.0-beta3-enhanced"]
+                 [android-utils/android-utils "0.6.0-no-drawer"]
                  [org.clojure/math.numeric-tower "0.0.2"]
                  ;; [org.antlr/antlr "3.5"]
                  ]
@@ -39,17 +39,7 @@ Intended for use with Abelson's book going under the same name."
                                   ;; [android/tools.nrepl "0.2.0-bigstack"]
                                   ]
                    :android {:aot :all-with-unused}}
-             :release {:android
-                       {:aot :all}}}
-
-  ;; :repl-options {:init-ns org.turtle.geometry.TurtleGraphics
-  ;;                ;; This expression will run when first opening a REPL, in the
-  ;;                ;; namespace from :init-ns or :main if specified.
-  ;;                :init nil
-  ;;                ;; Customize the socket the repl task listens on and
-  ;;                ;; attaches to.
-  ;;                :host "localhost"
-  ;;                :port 10001}
+             :release {:android {:aot :all}}}
 
   :plugins [[lein-droid "0.1.0-preview5-enhanced"]]
   :android ~(merge
@@ -66,9 +56,9 @@ Intended for use with Abelson's book going under the same name."
               ;; Uncomment this if dexer fails with OutOfMemoryException
               ;; :force-dex-optimize true
               :dex-opts ["-JXmx4096M"]
-              :dex-aux-opts ["--num-threads=2" "--no-optimize"]
+              :dex-aux-opts ["--num-threads=2"]
 
-              :min-version "11"
+              :min-version "10"
               :target-version "15"
               :aot-exclude-ns ["clojure.parallel" "clojure.core.reducers"]}
              key-def-info))
@@ -78,3 +68,4 @@ Intended for use with Abelson's book going under the same name."
 ;; clojure-compile/lein-command: "LEIN_JAVA_CMD=/usr/lib/jvm/java-7-openjdk-amd64/jre/bin/java lein with-profiles %s do droid code-gen, droid compile, droid create-dex, droid apk, droid install, droid run"
 ;; nrepl-server-command: "lein do droid forward-port, droid repl :headless"
 ;; End:
+
