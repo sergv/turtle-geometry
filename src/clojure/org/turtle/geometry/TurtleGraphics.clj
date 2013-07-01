@@ -13,14 +13,16 @@
                                 onResume superOnResume
                                 onPause superOnPause
                                 onDestroy superOnDestroy
-                                onBackPressed superOnBackPressed}
+                                onBackPressed superOnBackPressed
+                                onActivityResult superOnActivityResult}
               :state ^{:tag ActivityState} state
               :init init
               :constructors {[] []})
   (:import [android.app Activity]
-           [android.content Context]
+           [android.content Context Intent]
            [android.graphics Bitmap Bitmap$Config BitmapFactory Canvas
             Color Matrix Paint Paint$Cap Paint$Style Rect]
+           [android.net Uri]
            [android.text SpannableStringBuilder]
            [android.view
             GestureDetector GestureDetector$SimpleOnGestureListener
@@ -35,7 +37,8 @@
            [android.util AttributeSet]
            [android.util.Log]
 
-           [java.io BufferedWriter StringWriter]
+           [java.io BufferedWriter BufferedReader
+            File FileReader FileWriter StringWriter]
            [java.util.concurrent
             ConcurrentLinkedQueue
             LinkedBlockingQueue
@@ -181,6 +184,9 @@
                             nil))])
 
 
+
+(def ^{:const true} intent-save-file 0)
+(def ^{:const true} intent-load-file 1)
 
 (defn text-input->int [^EditText input-field]
   (Integer/valueOf ^String
@@ -398,6 +404,10 @@
                                             (resource :button_clear))
         button-reindent ^Button (.findViewById editor-layout
                                                (resource :button_reindent))
+        button-save ^Button (.findViewById editor-layout
+                                           (resource :button_save))
+        button-load ^Button (.findViewById editor-layout
+                                           (resource :button_load))
 
         rotated-turtle-bitmap (rotate-right-90
                                (BitmapFactory/decodeResource
@@ -465,8 +475,7 @@
              (.setCurrentTabByTag tab-host
                                   (.getString activity
                                               (resource :string
-                                                        :graphics_tab_label)))))
-         (log "Clicked run button"))))
+                                                        :graphics_tab_label))))))))
 
     (.setOnClickListener
      button-stop
@@ -504,12 +513,42 @@
                  (.setText editor (str *out*))))
              (catch Exception e
                (.setText editor orig-contents)
-               (report-error activity (str "error while indenting:\n" e)))))))))
+               (report-error activity (str "error while indenting:\n" e))))))))
+
+    (.setOnClickListener
+     button-save
+     (reify android.view.View$OnClickListener
+       (onClick [this unused-button]
+         (let [get-file-intent (Intent. Intent/ACTION_GET_CONTENT)]
+           (.setType get-file-intent "file/*")
+           ;; (.setType get-file-intent "text/*")
+           (let [choose-file-intent
+                 (Intent/createChooser get-file-intent
+                                       "Choose file to save to")]
+             (.startActivityForResult activity
+                                      choose-file-intent
+                                      intent-save-file))))))
+
+    (.setOnClickListener
+     button-load
+     (reify android.view.View$OnClickListener
+       (onClick [this unused-button]
+         (let [get-file-intent (Intent. Intent/ACTION_GET_CONTENT)]
+           (.setType get-file-intent "file/*")
+           ;; (.setType get-file-intent "*/*")
+           (let [choose-file-intent
+                 (Intent/createChooser get-file-intent
+                                       "Choose file to load from")]
+             (.startActivityForResult activity
+                                      choose-file-intent
+                                      intent-load-file)))))))
 
   (.setText (program-source-editor @this)
-            "(doseq [r [1 1.5 2 2.5 3]]\n  (dotimes [_ 360]\n    (forward r)\n    (left 1)))"
-            ;; "(forward 100)\n(left 90)\n(forward 100)\n"
-            )
+            ;; "(doseq [r [1 1.5 2 2.5 3]]\n  (dotimes [_ 360]\n    (forward r)\n    (left 1)))"
+            "(forward 100)\n(left 90)\n(forward 100)\n")
+
+  (log "program editor contents = \n%s"
+       (str (.getText (program-source-editor @this))))
   ;; (.setOnTouchListener (program-source-editor @this)
   ;;
   ;;                      (make-double-tap-handler
@@ -581,6 +620,29 @@
       (.superOnBackPressed this)
       (.setCurrentTabByTag tab-host source-tab-tag))))
 
+(defn -onActivityResult
+  [^org.turtle.geometry.TurtleGraphics this
+   request-code
+   result-code
+   ^Intent data]
+  (when (= result-code Activity/RESULT_OK)
+    (cond
+     (= request-code intent-save-file)
+     (let [uri (.getData data)
+           filename (.getPath uri)]
+       (spit filename (.getText (program-source-editor @this)))
+       ;; (with-open [writer (BufferedWriter. (FileWriter. filename))]
+       ;;   (.write writer (.getText (program-source-editor @this))))
+       )
+     (= request-code intent-load-file)
+     (let [uri (.getData data)
+           file (.getPath uri)]
+       (.setText (program-source-editor @this)
+                 ^String (slurp file)))
+     :else
+     ;; ignore it
+     nil)))
+
 ;; (defn -onSaveInstanceState [^org.turtle.geometry.TurtleGraphics this
 ;;                             ^android.os.Bundle bundle]
 ;;   )
@@ -591,7 +653,8 @@
 
 
 (defn clear-intermed-bitmap [^org.turtle.geometry.TurtleGraphics this]
-  (.drawColor ^Canvas (get-in @this [:draw-state :draw-canvas]) Color/WHITE))
+  (when-let [intermed-bitmap (get-in @this [:draw-state :draw-canvas])]
+    (.drawColor ^Canvas intermed-bitmap Color/WHITE)))
 
 (defn -surfaceChanged [^org.turtle.geometry.TurtleGraphics this
                        ^SurfaceHolder holder
@@ -910,7 +973,7 @@
                  (.runOnUiThread
                   activity
                   (fn []
-                    (report-error activity "Interrupted"))))
+                    (report-error activity "Interrupted" false))))
                (catch Exception e
                  (.runOnUiThread
                   activity
