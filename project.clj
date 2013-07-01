@@ -10,7 +10,7 @@
       nil)))
 
 
-(defproject turtle_geometry/turtle_geometry "0.0.1-SNAPSHOT"
+(defproject turtle_geometry/turtle_geometry "0.9.0"
   :description "Application intepreting LOGO programs in an interactive fashion.
 Intended for use with Abelson's book going under the same name."
   :url "http://example.com/FIXME"
@@ -22,6 +22,9 @@ Intended for use with Abelson's book going under the same name."
 
   :source-paths ["src/clojure"]
   :java-source-paths ["src/java" "bin"]
+
+  :javac-options ["-target" "1.6" "-source" "1.6"]
+
   ;; The following two definitions are optional. The default
   ;; target-path is "target", but you can change it to whatever you like.
   :target-path "bin"

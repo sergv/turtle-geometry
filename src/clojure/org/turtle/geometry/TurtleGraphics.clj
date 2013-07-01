@@ -4,7 +4,7 @@
 (ns org.turtle.geometry.TurtleGraphics
   (:gen-class :main false
               :name org.turtle.geometry.TurtleGraphics
-              :extends android.app.Activity
+              :extends android.support.v4.app.FragmentActivity
               :implements [clojure.lang.IDeref
                            android.view.SurfaceHolder$Callback]
               :exposes-methods {onCreate superOnCreate
@@ -20,11 +20,13 @@
               :state ^{:tag ActivityState} state
               :init init
               :constructors {[] []})
-  (:import [android.app Activity]
-           [android.content Context Intent]
+  (:import [android.support.v4.app DialogFragment]
+           [android.app Activity AlertDialog AlertDialog$Builder Dialog]
+           [android.content Context DialogInterface$OnClickListener Intent]
            [android.graphics Bitmap Bitmap$Config BitmapFactory Canvas
             Color Matrix Paint Paint$Cap Paint$Style Rect]
            [android.net Uri]
+           [android.os Bundle Environment]
            [android.text SpannableStringBuilder]
            [android.view
             GestureDetector GestureDetector$SimpleOnGestureListener
@@ -35,7 +37,7 @@
             View View$OnKeyListener View$OnTouchListener
             ViewGroup Window]
            [android.widget Button EditText ProgressBar
-            TabHost TabHost$TabSpec TabHost$TabContentFactory TextView]
+            TabHost TabHost$TabSpec TabHost$TabContentFactory TextView Toast]
            [android.util AttributeSet]
            [android.util.Log]
 
@@ -46,7 +48,6 @@
             LinkedBlockingQueue
             ThreadPoolExecutor
             TimeUnit]
-
 
            ;; [org.antlr.runtime ANTLRStringStream
            ;;  CommonTokenStream]
@@ -62,20 +63,26 @@
         [clojure.math.numeric-tower :only (sqrt)]
         [org.turtle.geometry.utils]
         [neko.init]
-        [android.clojure.util :only (defrecord*
-                                      make-double-tap-handler
-                                      make-ui-dimmer)]
+        [android.clojure.util :only (android-resource
+                                     defrecord*
+                                     make-double-tap-handler
+                                     make-ui-dimmer)]
         [android.clojure.graphic :only (color->paint
                                         ;; draw-grid
                                         with-saved-matrix)]))
 
 (defn log
-  ([msg] (android.util.Log/d "TurtleGeometry" msg))
+  ([msg]
+     ;; do nothing in release
+     ;; (android.util.Log/d "TurtleGeometry" msg)
+     )
   ([msg & args] (log (apply format msg args))))
 
 (defmacro draw-with-page-transform [canvas-var transform-matrix & body]
   `(with-saved-matrix ~canvas-var
      (.concat ~canvas-var ~transform-matrix)
+     ;; (.setMatrix ~canvas-var (matrix-mult (.getMatrix ~canvas-var)
+     ;;                                      ~transform-matrix))
      ~@body))
 
 (defmacro with-centered-canvas [canvas-var & body]
@@ -372,7 +379,7 @@
 
 
 (defn -onCreate [^org.turtle.geometry.TurtleGraphics this
-                 ^android.os.Bundle bundle]
+                 ^Bundle bundle]
   (reset! *activity* this)
   (neko.init/init this :port 10001)
   (doto this
@@ -524,36 +531,35 @@
      button-save
      (reify android.view.View$OnClickListener
        (onClick [this unused-button]
-         (let [get-file-intent (Intent. Intent/ACTION_GET_CONTENT)]
-           (.setType get-file-intent "file/*")
-           ;; (.setType get-file-intent "text/*")
-           (let [choose-file-intent
-                 (Intent/createChooser get-file-intent
-                                       "Choose file to save to")]
-             (.startActivityForResult activity
-                                      choose-file-intent
-                                      intent-save-file))))))
+         (let [get-file-intent (Intent. Intent/ACTION_PICK)]
+           (doto get-file-intent
+             (.setDataAndType (Uri/fromFile (File. "/mnt/sdcard"))
+                              "vnd.android.cursor.dir/lysesoft.andexplorer.file")
+             (.putExtra "explorer_title" "Save As...")
+             (.putExtra "browser_line" "enabled")
+             (.putExtra "browser_line_textfield" "file.tg"))
+           (.startActivityForResult activity
+                                    get-file-intent
+                                    intent-save-file)))))
 
     (.setOnClickListener
      button-load
      (reify android.view.View$OnClickListener
        (onClick [this unused-button]
-         (let [get-file-intent (Intent. Intent/ACTION_GET_CONTENT)]
-           (.setType get-file-intent "file/*")
-           ;; (.setType get-file-intent "*/*")
-           (let [choose-file-intent
-                 (Intent/createChooser get-file-intent
-                                       "Choose file to load from")]
-             (.startActivityForResult activity
-                                      choose-file-intent
-                                      intent-load-file)))))))
+         (let [get-file-intent (Intent. Intent/ACTION_PICK)]
+           (.setDataAndType get-file-intent
+                            (Uri/fromFile (File. "/mnt/sdcard"))
+                            "vnd.android.cursor.dir/lysesoft.andexplorer.file")
+           (.putExtra get-file-intent
+                      "browser_filter_extension_whitelist"
+                      "*.tg")
+           (.startActivityForResult activity
+                                    get-file-intent
+                                    intent-load-file))))))
 
   (.setText (program-source-editor @this)
             ;; "(doseq [r [1 1.5 2 2.5 3]]\n  (dotimes [_ 360]\n    (forward r)\n    (left 1)))"
             "(forward 100)\n(left 90)\n(forward 100)\n")
-
-  (log "program editor contents = \n%s"
-       (str (.getText (program-source-editor @this))))
   ;; (.setOnTouchListener (program-source-editor @this)
   ;;
   ;;                      (make-double-tap-handler
@@ -636,12 +642,44 @@
    request-code
    result-code
    ^Intent data]
-  (when (= result-code Activity/RESULT_OK)
+  (when (and (= result-code Activity/RESULT_OK)
+             (not (nil? data))
+             (not (nil? (.getData data))))
     (cond
      (= request-code intent-save-file)
      (let [uri (.getData data)
-           filename (.getPath uri)]
-       (spit filename (.getText (program-source-editor @this)))
+           filename (.getPath uri)
+           save
+           (fn []
+             (spit filename (.getText (program-source-editor @this)))
+             (.show (Toast/makeText this
+                                    (format "Saved as %s" filename)
+                                    Toast/LENGTH_SHORT)))]
+       (if (.exists (File. filename))
+         (let [activity this
+               frag-dialog-manager
+               (proxy [DialogFragment] []
+                 (^Dialog onCreateDialog [^Bundle saved-state]
+                   (let [builder (AlertDialog$Builder. activity)]
+                     (doto builder
+                       (.setTitle "Please confirm file overwrite")
+                       (.setIcon (android-resource :drawable :stat_sys_warning))
+                       (.setCancelable true)
+                       (.setMessage (format "Do you want to overwrite %s file?"
+                                            filename))
+                       (.setPositiveButton (android-resource :string :ok)
+                                           (reify DialogInterface$OnClickListener
+                                             (onClick [unused-this dialog which]
+                                               (save))))
+                       (.setNegativeButton (android-resource :string :cancel)
+                                           nil))
+                     (.create builder))))]
+           (.show frag-dialog-manager
+                  (.getSupportFragmentManager this)
+                  "confirm")
+           true)
+         (save))
+
        ;; (with-open [writer (BufferedWriter. (FileWriter. filename))]
        ;;   (.write writer (.getText (program-source-editor @this))))
        )
@@ -658,14 +696,14 @@
   (letfn [(save-matrix [activity-key
                         key
                         ^org.turtle.geometry.TurtleGraphics activity
-                        ^android.os.Bundle bundle]
+                        ^Bundle bundle]
             (let [values (float-array 9 0)]
               (.getValues ^Matrix (get-in @activity activity-key) values)
               (.putFloatArray bundle key values)))
           (restore-matrix [activity-key
                            key
                            ^org.turtle.geometry.TurtleGraphics activity
-                           ^android.os.Bundle bundle]
+                           ^Bundle bundle]
             (let [m (Matrix.)]
               (.setValues m (.getFloatArray bundle key))
               (swap! (.state activity) assoc-in
@@ -674,53 +712,53 @@
     [["intermediate-bitmap"
       (fn [key
            ^org.turtle.geometry.TurtleGraphics activity
-           ^android.os.Bundle bundle]
+           ^Bundle bundle]
         (.putParcelable bundle key (get-in @activity
                                            [:draw-state :intermediate-bitmap])))
       (fn [key
            ^org.turtle.geometry.TurtleGraphics activity
-           ^android.os.Bundle bundle]
+           ^Bundle bundle]
         (swap! (.state activity) assoc-in
                [:draw-state :intermediate-bitmap]
                (.getParcelable bundle key)))]
      ["program-source"
       (fn [key
            ^org.turtle.geometry.TurtleGraphics activity
-           ^android.os.Bundle bundle]
+           ^Bundle bundle]
         (.putString bundle key (str (.getText (program-source-editor @activity)))))
       (fn [key
            ^org.turtle.geometry.TurtleGraphics activity
-           ^android.os.Bundle bundle]
+           ^Bundle bundle]
         (.setText (program-source-editor @activity)
                   (.getString bundle key)))]
      ["turtle-view-transform"
       (fn [key
            ^org.turtle.geometry.TurtleGraphics activity
-           ^android.os.Bundle bundle]
+           ^Bundle bundle]
         (save-matrix [:draw-area-view-transform] key activity bundle))
       (fn [key
            ^org.turtle.geometry.TurtleGraphics activity
-           ^android.os.Bundle bundle]
+           ^Bundle bundle]
         (restore-matrix [:draw-area-view-transform] key activity bundle))]
      ["intermediate-transform"
       (fn [key
            ^org.turtle.geometry.TurtleGraphics activity
-           ^android.os.Bundle bundle]
+           ^Bundle bundle]
         (save-matrix [:intermediate-transform] key activity bundle))
       (fn [key
            ^org.turtle.geometry.TurtleGraphics activity
-           ^android.os.Bundle bundle]
+           ^Bundle bundle]
         (restore-matrix [:intermediate-transform] key activity bundle))]]))
 
 
 (defn -onSaveInstanceState [^org.turtle.geometry.TurtleGraphics this
-                            ^android.os.Bundle bundle]
+                            ^Bundle bundle]
   (.superOnSaveInstanceState this bundle)
   (doseq [[key save _] save-state-config]
     (save key this bundle)))
 
 (defn -onRestoreInstanceState [^org.turtle.geometry.TurtleGraphics this
-                               ^android.os.Bundle bundle]
+                               ^Bundle bundle]
   (.superOnRestoreInstanceState this bundle)
   (doseq [[key _ restore] save-state-config]
     (restore key this bundle)))
@@ -1048,18 +1086,23 @@
 
                  (intern sandbox-ns '** clojure.math.numeric-tower/expt)
 
-                 (intern sandbox-ns (with-meta 'to {:macro true})
-                         (fn to [name args & body]
-                           `(defn ~name ~args
-                              ~@body)))
-                 (intern sandbox-ns (with-meta 'iter {:macro true})
-                         (fn iter [cond & body]
-                           (cond (number? cond)
-                                 `(dotimes [_ ~cond]
+                 (intern sandbox-ns
+                         (with-meta 'to
+                           {:macro true
+                            :arglists '([invokation _ name args & body])})
+                         (fn [invokation _ name args & body]
+                           `(defn ~name ~args ~@body)))
+
+                 (intern sandbox-ns (with-meta 'iter
+                                      {:macro true
+                                       :arglists '([invokation _ cond & body])})
+                         (fn iter [invokation _ condition & body]
+                           (cond (number? condition)
+                                 `(dotimes [_# ~condition]
                                     ~@body)
                                  :else
                                  `(loop []
-                                    (when ~cond
+                                    (when ~condition
                                       ~@body
                                       (recur)))
                                  ;; (throw (RuntimeException.
