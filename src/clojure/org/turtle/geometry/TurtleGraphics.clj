@@ -20,7 +20,7 @@
   (:import [android.app Activity]
            [android.content Context]
            [android.graphics Bitmap Bitmap$Config BitmapFactory Canvas
-            Color Matrix Paint Rect]
+            Color Matrix Paint Paint$Cap Paint$Style Rect]
            [android.text SpannableStringBuilder]
            [android.view
             GestureDetector GestureDetector$SimpleOnGestureListener
@@ -61,7 +61,7 @@
                                       make-double-tap-handler
                                       make-ui-dimmer)]
         [android.clojure.graphic :only (color->paint
-                                        draw-grid
+                                        ;; draw-grid
                                         with-saved-matrix)]))
 
 (defn log
@@ -98,6 +98,20 @@
   (let [tmp (Matrix. m1)]
     (.postConcat tmp m2)
     tmp))
+
+(defn ^Paint line-paint [color]
+  (let [p ^Paint (color->paint color)]
+    (doto p
+      ;; (.setStrokeWidth ,,, 2)
+      (.setStyle ,,, Paint$Style/STROKE)
+      (.setStrokeCap ,,, Paint$Cap/ROUND)
+      (.setAntiAlias ,,, true))
+    p))
+
+(defn antialiasing-paint ^Paint []
+  (let [p (Paint.)]
+    (.setAntiAlias p true)
+    p))
 
 ;;;; activity functions
 
@@ -377,14 +391,9 @@
                                                (resource :button_reindent))
 
         rotated-turtle-bitmap (rotate-right-90
-                               (Bitmap/createScaledBitmap
-                                (BitmapFactory/decodeResource
-                                 (.getResources this)
-                                 (resource :drawable :turtle_marker))
-                                27
-                                50
-                                ;; do filtering
-                                true))]
+                               (BitmapFactory/decodeResource
+                                (.getResources this)
+                                (resource :drawable :turtle_marker)))]
     (swap! (.state this)
            assoc
            :draw-area draw-area-view
@@ -458,23 +467,17 @@
            (when turtle-thread
              (.interrupt turtle-thread)
              (swap! (.state activity) assoc :turtle-program-thread nil)
-             (.join turtle-thread)
-             ;; (clear-draw-queue! (draw-area @activity))
-             )))))
+             (.join turtle-thread))))))
 
     (.setOnClickListener
      button-clear
      (reify android.view.View$OnClickListener
        (onClick [this unused-button]
-         (let [turtle-thread (turtle-program-thread @activity)]
-           (when turtle-thread
-             (swap! (.state activity) assoc-in
-                    [:turtle-state]
-                    initial-turtle-state)
-             (clear-intermed-bitmap activity)
-             (draw-scene activity)
-             ;; (clear-draw-queue! (draw-area @activity))
-             )))))
+         (swap! (.state activity) assoc-in
+                [:turtle-state]
+                initial-turtle-state)
+         (clear-intermed-bitmap activity)
+         (draw-scene activity))))
 
     ;; todo: move this "button renindent" into context menu for source editor
     (.setOnClickListener
@@ -678,21 +681,22 @@
 (defn draw-turtle-bitmap
   ([^Canvas canvas ^org.turtle.geometry.TurtleGraphics activity]
      (let [bitmap (turtle-bitmap @activity)
-           bitmap-center-x ^double (/ (.getWidth bitmap) 2.0)
-           bitmap-center-y ^double (/ (.getHeight bitmap) 2.0)
+           target-width 50
+           target-height 27
+           bitmap-center-x ^double (/ target-width 2.0)
+           bitmap-center-y ^double (/ target-height 2.0)
            [x y] (get-in @activity [:turtle-state :position])
            heading (get-in @activity [:turtle-state :angle])]
        (with-saved-matrix canvas
-         (.translate canvas (- x bitmap-center-x) (- y bitmap-center-y))
-         (.rotate canvas
-                  heading
-                  bitmap-center-x
-                  bitmap-center-y)
-         (.drawBitmap canvas
-                      bitmap
-                      0.0
-                      0.0
-                      nil)))))
+         (doto canvas
+           (.translate (- x bitmap-center-x) (- y bitmap-center-y))
+           (.rotate heading
+                    bitmap-center-x
+                    bitmap-center-y)
+           (.drawBitmap bitmap
+                        nil
+                        (Rect. 0 0 target-width target-height)
+                        ^Paint (antialiasing-paint)))))))
 
 (defn draw-scene [^org.turtle.geometry.TurtleGraphics this]
   (if (get-in @this [:draw-state :surface-available?])
@@ -727,7 +731,7 @@
                  (.drawLine surface-canvas
                             startx starty
                             currentx currenty
-                            (color->paint color))))
+                            (line-paint color))))
              (draw-turtle-bitmap surface-canvas this)))
           (log "frame took %s ms" (- (System/currentTimeMillis) start-time)))
         (finally
