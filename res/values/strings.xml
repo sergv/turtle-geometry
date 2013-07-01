@@ -10,7 +10,7 @@
   <string name="label_reindent">Reindent</string>
   <string name="duration_label">Drawing duration</string>
   <string name="duration_units_label">ms</string>
-  <string name="default_duration">2000</string>
+  <string name="default_duration">1000</string>
   <string name="error_output_default_text">Errors appear here</string>
   <string name="menu_center_yourself_title">Center yourself</string>
   <string name="menu_zoom_in_title">Zoom in</string>

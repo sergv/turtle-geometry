@@ -14,7 +14,9 @@
                                 onPause superOnPause
                                 onDestroy superOnDestroy
                                 onBackPressed superOnBackPressed
-                                onActivityResult superOnActivityResult}
+                                onActivityResult superOnActivityResult
+                                onSaveInstanceState superOnSaveInstanceState
+                                onRestoreInstanceState superOnRestoreInstanceState}
               :state ^{:tag ActivityState} state
               :init init
               :constructors {[] []})
@@ -237,6 +239,13 @@
            (make-identity-transform)))
   (redraw-indermed-bitmap activity)
   (draw-scene activity))
+
+(defn stop-turtle-thread [^org.turtle.geometry.TurtleGraphics activity]
+  (let [turtle-thread (turtle-program-thread @activity)]
+    (when turtle-thread
+      (.interrupt turtle-thread)
+      (swap! (.state activity) assoc :turtle-program-thread nil)
+      (.join turtle-thread))))
 
 (defn register-interaction-detectors [^org.turtle.geometry.TurtleGraphics activity
                                       ^View root]
@@ -481,11 +490,7 @@
      button-stop
      (reify android.view.View$OnClickListener
        (onClick [this unused-button]
-         (let [turtle-thread (turtle-program-thread @activity)]
-           (when turtle-thread
-             (.interrupt turtle-thread)
-             (swap! (.state activity) assoc :turtle-program-thread nil)
-             (.join turtle-thread))))))
+         (stop-turtle-thread activity))))
 
     (.setOnClickListener
      button-clear
@@ -608,7 +613,8 @@
 (defn -onDestroy [^org.turtle.geometry.TurtleGraphics this]
   (.superOnDestroy this)
   (neko.init/deinit)
-  (neko.compilation/clear-cache))
+  (neko.compilation/clear-cache)
+  (stop-turtle-thread this))
 
 (defn -onBackPressed [^org.turtle.geometry.TurtleGraphics this]
   (log "onBackPressed")
@@ -643,18 +649,81 @@
      ;; ignore it
      nil)))
 
-;; (defn -onSaveInstanceState [^org.turtle.geometry.TurtleGraphics this
-;;                             ^android.os.Bundle bundle]
-;;   )
-;;
-;; (defn -onRestoreInstanceState [^org.turtle.geometry.TurtleGraphics this
-;;                                ^android.os.Bundle bundle]
-;;   )
+(def save-state-config
+  (letfn [(save-matrix [activity-key
+                        key
+                        ^org.turtle.geometry.TurtleGraphics activity
+                        ^android.os.Bundle bundle]
+            (let [values (float-array 9 0)]
+              (.getValues ^Matrix (get-in @activity activity-key) values)
+              (.putFloatArray bundle key values)))
+          (restore-matrix [activity-key
+                           key
+                           ^org.turtle.geometry.TurtleGraphics activity
+                           ^android.os.Bundle bundle]
+            (let [m (Matrix.)]
+              (.setValues m (.getFloatArray bundle key))
+              (swap! (.state activity) assoc-in
+                     activity-key
+                     m)))]
+    [["intermediate-bitmap"
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^android.os.Bundle bundle]
+        (.putParcelable bundle key (get-in @activity
+                                           [:draw-state :intermediate-bitmap])))
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^android.os.Bundle bundle]
+        (swap! (.state activity) assoc-in
+               [:draw-state :intermediate-bitmap]
+               (.getParcelable bundle key)))]
+     ["program-source"
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^android.os.Bundle bundle]
+        (.putString bundle key (str (.getText (program-source-editor @activity)))))
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^android.os.Bundle bundle]
+        (.setText (program-source-editor @activity)
+                  (.getString bundle key)))]
+     ["turtle-view-transform"
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^android.os.Bundle bundle]
+        (save-matrix [:draw-area-view-transform] key activity bundle))
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^android.os.Bundle bundle]
+        (restore-matrix [:draw-area-view-transform] key activity bundle))]
+     ["intermediate-transform"
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^android.os.Bundle bundle]
+        (save-matrix [:intermediate-transform] key activity bundle))
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^android.os.Bundle bundle]
+        (restore-matrix [:intermediate-transform] key activity bundle))]]))
+
+
+(defn -onSaveInstanceState [^org.turtle.geometry.TurtleGraphics this
+                            ^android.os.Bundle bundle]
+  (.superOnSaveInstanceState this bundle)
+  (doseq [[key save _] save-state-config]
+    (save key this bundle)))
+
+(defn -onRestoreInstanceState [^org.turtle.geometry.TurtleGraphics this
+                               ^android.os.Bundle bundle]
+  (.superOnRestoreInstanceState this bundle)
+  (doseq [[key _ restore] save-state-config]
+    (restore key this bundle)))
 
 
 (defn clear-intermed-bitmap [^org.turtle.geometry.TurtleGraphics this]
-  (when-let [intermed-bitmap (get-in @this [:draw-state :draw-canvas])]
-    (.drawColor ^Canvas intermed-bitmap Color/WHITE)))
+  (when-let [intermed-canvas (get-in @this [:draw-state :draw-canvas])]
+    (.drawColor ^Canvas intermed-canvas Color/WHITE)))
 
 (defn -surfaceChanged [^org.turtle.geometry.TurtleGraphics this
                        ^SurfaceHolder holder
@@ -663,7 +732,7 @@
                        height]
   (log "surfaceChanged")
   (let [new-bitmap
-        (if-let [interm-bitmap (.intermediate-bitmap (draw-state @this))]
+        (if-let [interm-bitmap (get-in @this [:draw-state :intermediate-bitmap])]
           (Bitmap/createScaledBitmap interm-bitmap
                                      width
                                      height
@@ -776,7 +845,8 @@
                                         (getHolder)
                                         (lockCanvas))]
       (try
-        (let [start-time (System/currentTimeMillis)]
+        (let [;;start-time (System/currentTimeMillis)
+              ]
           ;; this draw on intermediate-bitmap in draw-state
           (draw-with-page-transform
            surface-canvas
@@ -805,7 +875,8 @@
                             currentx currenty
                             (line-paint color))))
              (draw-turtle-bitmap surface-canvas this)))
-          (log "frame took %s ms" (- (System/currentTimeMillis) start-time)))
+          ;; (log "frame took %s ms" (- (System/currentTimeMillis) start-time))
+          )
         (finally
           (.. (draw-area @this)
               (getHolder)
