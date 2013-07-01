@@ -17,7 +17,7 @@
       android:debuggable="true"
       android:allowBackup="false">
     <activity android:name=".TurtleGraphics"
-              android:theme="@android:style/Theme.Holo">
+              android:theme="@style/DarkTheme">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>

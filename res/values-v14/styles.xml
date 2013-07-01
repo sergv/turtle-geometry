@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <style name="LightTheme" parent="@android:style/Theme.DeviceDefault.Light">
+  </style>
+  <style name="DarkTheme" parent="@android:style/Theme.DeviceDefault">
+  </style>
+  <!-- <style name="LightTheme.NoBar" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+  </style>
+  <style name="DarkTheme.NoBar" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+  </style> -->
+</resources>
