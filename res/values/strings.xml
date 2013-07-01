@@ -7,7 +7,6 @@
   <string name="label_clear">Clear</string>
   <string name="label_save">Save</string>
   <string name="label_load">Load</string>
-  <string name="label_reindent">Reindent</string>
   <string name="duration_label">Drawing duration</string>
   <string name="duration_units_label">ms</string>
   <string name="default_duration">1000</string>

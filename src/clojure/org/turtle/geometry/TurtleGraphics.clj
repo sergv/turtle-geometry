@@ -42,7 +42,7 @@
            [android.util.Log]
 
            [java.io BufferedWriter BufferedReader
-            File FileReader FileWriter StringWriter]
+            File FileReader FileWriter]
            [java.util.concurrent
             ConcurrentLinkedQueue
             LinkedBlockingQueue
@@ -55,11 +55,7 @@
            )
   (:require [neko.init]
             [neko.compilation])
-  (:use [clojure.pprint :only (with-pprint-dispatch
-                                pprint
-                                *print-right-margin*
-                                code-dispatch)]
-        [clojure.test :only (function?)]
+  (:use [clojure.test :only (function?)]
         [clojure.math.numeric-tower :only (sqrt)]
         [org.turtle.geometry.utils]
         [neko.init]
@@ -418,8 +414,6 @@
                                            (resource :button_stop))
         button-clear ^Button (.findViewById editor-layout
                                             (resource :button_clear))
-        button-reindent ^Button (.findViewById editor-layout
-                                               (resource :button_reindent))
         button-save ^Button (.findViewById editor-layout
                                            (resource :button_save))
         button-load ^Button (.findViewById editor-layout
@@ -508,24 +502,6 @@
                 initial-turtle-state)
          (clear-intermed-bitmap activity)
          (draw-scene activity))))
-
-    ;; todo: move this "button renindent" into context menu for source editor
-    (.setOnClickListener
-     button-reindent
-     (reify android.view.View$OnClickListener
-       (onClick [this unused-button]
-         (let [editor (program-source-editor @activity)
-               out-writer ^StringWriter (StringWriter.)
-               orig-contents (.getText editor)]
-           (try
-             (binding [*print-right-margin* 80
-                       *out* out-writer]
-               (with-pprint-dispatch code-dispatch
-                 (pprint (read-string (str orig-contents)))
-                 (.setText editor (str *out*))))
-             (catch Exception e
-               (.setText editor orig-contents)
-               (report-error activity (str "error while indenting:\n" e))))))))
 
     (.setOnClickListener
      button-save

@@ -82,12 +82,6 @@
                 android:padding="@dimen/button_padding"
                 />
 
-        <Button android:id="@+id/button_reindent"
-                android:layout_width="@dimen/button_width"
-                android:layout_height="wrap_content"
-                android:text="@string/label_reindent"
-                android:padding="@dimen/button_padding"
-                />
       </LinearLayout>
 
     </LinearLayout>
