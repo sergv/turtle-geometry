@@ -188,9 +188,18 @@
                        (getText)
                        (toString))))
 
-(defn report-error [^org.turtle.geometry.TurtleGraphics activity
-                    ^String msg]
-  (.setText (error-output @activity) msg))
+(defn report-error
+  ([activity msg]
+     (report-error activity msg true))
+  ([^org.turtle.geometry.TurtleGraphics activity
+     ^String msg
+    switch-to-errors-tab]
+     (.setText (error-output @activity) msg)
+     (when switch-to-errors-tab
+       (.setCurrentTabByTag (activity-tab-host @activity)
+                            (.getString activity
+                                        (resource :string
+                                                  :errors_tab_label))))))
 
 (defn get-animation-duration [^org.turtle.geometry.TurtleGraphics activity]
   (text-input->int (duration-entry @activity)))
