@@ -35,10 +35,9 @@ Intended for use with Abelson's book going under the same name."
                  [org.clojure/math.numeric-tower "0.0.2"]
                  ;; [org.antlr/antlr "3.5"]
                  ]
-  :profiles {:dev {:dependencies [[org.clojure/tools.nrepl "0.2.1"]
-                                  ;; [android/tools.nrepl "0.2.0-bigstack"]
-                                  ]
-                   :android {:aot :all-with-unused}}
+  :profiles {:dev {:dependencies [[org.clojure/tools.nrepl "0.2.1"]]
+                   :android {:aot :all-with-unused
+                             :start-nrepl-server true}}
              :release {:android {:aot :all}}}
 
   :plugins [[lein-droid "0.1.0-preview5-enhanced"]]
@@ -47,7 +46,6 @@ Intended for use with Abelson's book going under the same name."
               :gen-path "bin"
 
               :enable-dynamic-compilation true
-              :start-nrepl-server true
               :repl-device-port 10001
               :repl-local-port 10001
 

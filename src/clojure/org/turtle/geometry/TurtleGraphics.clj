@@ -83,7 +83,7 @@
         width (.getWidth b)
         half-width (/ width 2.0)
         half-height (/ height 2.0)
-        m (make-identity-transform)]
+        m ^Matrix (make-identity-transform)]
     (.preTranslate m (+ half-width) (+ half-height))
     (.setRotate m 90)
     (.postTranslate m (- half-width) (- half-height))
@@ -185,7 +185,7 @@
         make-move-transform
         (fn ^Matrix [^MotionEvent start
                      ^MotionEvent end]
-          (let [m (make-identity-transform)
+          (let [m ^Matrix (make-identity-transform)
                 id @pointer-id
                 dx (- (.getX end id) (.getX start id))
                 dy (- (.getY end id) (.getY start id))]
@@ -193,7 +193,7 @@
             m))
         make-scale-transform
         (fn ^Matrix [scale-factor]
-          (let [m (make-identity-transform)
+          (let [m ^Matrix (make-identity-transform)
                 draw-canvas ^Canvas (get-in @activity [:draw-state :draw-canvas])
                 width (.getWidth draw-canvas)
                 height (.getHeight draw-canvas)]
@@ -458,7 +458,7 @@
 
 (defn -onDestroy [^org.turtle.geometry.TurtleGraphics this]
   (.superOnDestroy this)
-  (neko.init/stop-nrepl-server))
+  (neko.init/deinit))
 
 (defn -onBackPressed [^org.turtle.geometry.TurtleGraphics this]
   (log "onBackPressed")
