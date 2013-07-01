@@ -601,6 +601,11 @@
                                         (make-scale-transform this
                                                               zoom-out-factor))
         true)
+      (= item-id (resource :id :menu_refresh))
+      (do
+        (redraw-indermed-bitmap this)
+        (draw-scene this)
+        true)
       :else
       (.superOnMenuItemSelected this feature-id item))))
 
@@ -1024,9 +1029,15 @@
              (try
                (let [sandbox-ns (create-ns 'org.turtle.geometry.TurtleSandbox)]
                  (intern sandbox-ns 'forward forward)
+                 (intern sandbox-ns 'fd forward)
                  (intern sandbox-ns 'backward backward)
+                 (intern sandbox-ns 'back backward)
+                 (intern sandbox-ns 'bd backward)
+                 (intern sandbox-ns 'bk backward)
                  (intern sandbox-ns 'left left)
+                 (intern sandbox-ns 'lt left)
                  (intern sandbox-ns 'right right)
+                 (intern sandbox-ns 'rt right)
                  (intern sandbox-ns 'heading heading)
                  (intern sandbox-ns 'set-heading set-heading)
 
@@ -1035,9 +1046,31 @@
                  (intern sandbox-ns 'pen-down pen-down)
                  (intern sandbox-ns 'log log)
 
+                 (intern sandbox-ns '** clojure.math.numeric-tower/expt)
+
+                 (intern sandbox-ns (with-meta 'to {:macro true})
+                         (fn to [name args & body]
+                           `(defn ~name ~args
+                              ~@body)))
+                 (intern sandbox-ns (with-meta 'iter {:macro true})
+                         (fn iter [cond & body]
+                           (cond (number? cond)
+                                 `(dotimes [_ ~cond]
+                                    ~@body)
+                                 :else
+                                 `(loop []
+                                    (when ~cond
+                                      ~@body
+                                      (recur)))
+                                 ;; (throw (RuntimeException.
+                                 ;;         (format "invalid condition in repeat loop: %s"
+                                 ;;                 cond)))
+                                 )))
+
                  (binding [*ns* sandbox-ns]
                    (use '[clojure.core])
-                   (use '[clojure.math.numeric-tower :only (sqrt)])
+                   (use '[clojure.math.numeric-tower :only
+                          (sqrt expt gcd floor ceil round)])
 
                    (load-string program-text)))
                (catch InterruptedException _
@@ -1049,7 +1082,9 @@
                  (.runOnUiThread
                   activity
                   (fn []
-                    (report-error activity (str "We've got an error here:\n" e)))))))
+                    (report-error activity
+                                  (str "Error during turtle program evaluation:\n"
+                                       e)))))))
            "turtle program thread"
            (* 8 1024 1024))]
       (let [accumulated-lines (get-in @activity [:turtle-state :lines])]

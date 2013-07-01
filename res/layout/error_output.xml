@@ -19,7 +19,7 @@
             android:typeface="monospace"
 
             android:scrollbars="vertical"
-            android:scrollHorizontally="true"
+            android:scrollHorizontally="false"
             />
 
   <!-- android:maxWidth="@dimen/error_output_max_width" -->
