@@ -10,7 +10,8 @@
               :exposes-methods {onCreate superOnCreate
                                 onResume superOnResume
                                 onPause superOnPause
-                                onDestroy superOnDestroy}
+                                onDestroy superOnDestroy
+                                onBackPressed superOnBackPressed}
               :state ^{:tag ActivityState} state
               :init init
               :constructors {[] []})
@@ -127,7 +128,8 @@
                            ^EditText program-source-editor
                            ^TextView error-output
                            ^EditText duration-entry
-                           ^Menu menu
+                           ^Menu activity-menu
+                           ^TabHost activity-tab-host
 
                            ^DrawState draw-state
                            ^UserOptions user-options
@@ -143,6 +145,7 @@
 
 (defn -init []
   [[] (atom (ActivityState. nil
+                            nil
                             nil
                             nil
                             nil
@@ -289,7 +292,6 @@
         inflater (.getLayoutInflater this)
 
         ^TabHost tab-host (.findViewById this (resource :main_layout))
-        graphics-tab-tag "Graphics"
         ^View editor-layout (.inflate inflater
                                       ^int (resource :layout :program_editor)
                                       nil)
@@ -333,7 +335,8 @@
            :program-source-editor source-editor-view
            :error-output error-output-view
            :duration-entry duration-entry-view
-           :menu nil
+           :activity-menu nil
+           :activity-tab-host tab-host
 
            :draw-state (DrawState. false nil nil)
            :user-options (UserOptions. true)
@@ -347,23 +350,27 @@
     (.. draw-area-view (getHolder) (addCallback this))
 
     (register-interaction-detectors activity draw-area-view)
-    (doto tab-host
-      (. setup)
-      (. addTab (doto (.newTabSpec tab-host "Source")
-                  (. setIndicator "Source")
-                  (. setContent (reify TabHost$TabContentFactory
-                                  (createTabContent [unused-this _]
-                                    editor-layout)))))
-      (. addTab (doto (.newTabSpec tab-host "Errors")
-                  (. setIndicator "Errors")
-                  (. setContent (reify TabHost$TabContentFactory
-                                  (createTabContent [unused-this _]
-                                    error-output-layout)))))
-      (. addTab (doto (.newTabSpec tab-host graphics-tab-tag)
-                  (. setIndicator graphics-tab-tag)
-                  (. setContent (reify TabHost$TabContentFactory
-                                  (createTabContent [unused-this _]
-                                    draw-area-layout))))))
+    (let [source-tab-tag (.getString this (resource :string :source_tab_label))
+          errors-tab-tag (.getString this (resource :string :errors_tab_label))
+          graphics-tab-tag (.getString this (resource :string
+                                                      :graphics_tab_label))]
+      (doto tab-host
+        (. setup)
+        (. addTab (doto (.newTabSpec tab-host source-tab-tag)
+                    (. setIndicator source-tab-tag)
+                    (. setContent (reify TabHost$TabContentFactory
+                                    (createTabContent [unused-this _]
+                                      editor-layout)))))
+        (. addTab (doto (.newTabSpec tab-host errors-tab-tag)
+                    (. setIndicator errors-tab-tag)
+                    (. setContent (reify TabHost$TabContentFactory
+                                    (createTabContent [unused-this _]
+                                      error-output-layout)))))
+        (. addTab (doto (.newTabSpec tab-host graphics-tab-tag)
+                    (. setIndicator graphics-tab-tag)
+                    (. setContent (reify TabHost$TabContentFactory
+                                    (createTabContent [unused-this _]
+                                      draw-area-layout)))))))
 
     (.setOnClickListener
      button-run
@@ -381,7 +388,10 @@
                       :turtle-program-thread
                       turtle-thread)))
            (when (.show-graphics-when-run (user-options @activity))
-             (.setCurrentTabByTag tab-host graphics-tab-tag)))
+             (.setCurrentTabByTag tab-host
+                                  (.getString activity
+                                              (resource :string
+                                                        :graphics_tab_label)))))
          (log "Clicked run button"))))
 
     (.setOnClickListener
@@ -433,10 +443,11 @@
             "(forward 100)\n(left 90)\n(forward 100)\n")
   (.setOnTouchListener (program-source-editor @this)
 
-                       (make-double-tap-handler (fn [] (log "Double tapped source editor twice"))))
+                       (make-double-tap-handler
+                        (fn [] (log "Double tapped source editor twice"))))
   (.setOnTouchListener (error-output @this)
-                       (make-double-tap-handler (fn [] (log "Double tapped error output twice")))))
-
+                       (make-double-tap-handler
+                        (fn [] (log "Double tapped error output twice")))))
 
 
 (defn -onResume [^org.turtle.geometry.TurtleGraphics this]
@@ -448,6 +459,16 @@
 (defn -onDestroy [^org.turtle.geometry.TurtleGraphics this]
   (.superOnDestroy this)
   (neko.init/stop-nrepl-server))
+
+(defn -onBackPressed [^org.turtle.geometry.TurtleGraphics this]
+  (log "onBackPressed")
+  (let [tab-host (activity-tab-host @this)
+        source-tab-tag (.getString this
+                                   (resource :string :source_tab_label))]
+    (if (= (.getCurrentTabTag tab-host)
+           source-tab-tag)
+      (.superOnBackPressed this)
+      (.setCurrentTabByTag tab-host source-tab-tag))))
 
 ;; (defn -onSaveInstanceState [^org.turtle.geometry.TurtleGraphics this
 ;;                             ^android.os.Bundle bundle]
@@ -785,7 +806,10 @@
                     (report-error activity (str "We've got an error here:\n" e)))))))
            "turtle program thread"
            (* 8 1024 1024))]
-      (swap! (.state activity) assoc-in [:turtle-state] initial-turtle-state)
+      (let [accumulated-lines (get-in @activity [:turtle-state :lines])]
+        (swap! (.state activity) assoc-in
+               [:turtle-state]
+               (assoc initial-turtle-state :lines accumulated-lines)))
       (draw-scene activity)
       (.start turtle-thread)
       turtle-thread)))

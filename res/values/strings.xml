@@ -12,4 +12,8 @@
   <string name="duration_units_label">ms</string>
   <string name="default_duration">2000</string>
 
+  <string name="graphics_tab_label">Graphics</string>
+  <string name="errors_tab_label">Errors</string>
+  <string name="source_tab_label">Source</string>
+
 </resources>

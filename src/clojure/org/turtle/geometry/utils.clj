@@ -14,8 +14,9 @@
             :layout   org.turtle.geometry.R$layout
             :menu     org.turtle.geometry.R$menu
             :drawable org.turtle.geometry.R$drawable
-            (throw java.lang.RuntimeException
-                   (str "invalid resource type: " resource-type)))
+            :string   org.turtle.geometry.R$string
+            (throw (java.lang.RuntimeException
+                    (str "invalid resource type: " resource-type))))
          ~(symbol (name resource-name)))))
 
 
