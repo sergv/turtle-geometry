@@ -1,9 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
-  <item android:id="@+id/progress_bar"
+
+  <item android:id="@+id/menu_center_yourself"
+        android:title="@string/menu_center_yourself_title"
+        android:icon="@android:drawable/ic_menu_compass"
+        />
+
+  <item android:id="@+id/menu_zoom_in"
+        android:title="@string/menu_zoom_in_title"
+        android:icon="@android:drawable/ic_menu_zoom"
+        />
+
+  <item android:id="@+id/menu_zoom_out"
+        android:title="@string/menu_zoom_out_title"
+        android:icon="@android:drawable/ic_menu_zoom"
+        />
+
+  <!-- android:showAsAction="always"
+       android:actionLayout="@layout/tools_center_yourself" -->
+
+  <!-- <item android:id="@+id/progress_bar"
         android:title="menu_progress_bar"
         android:showAsAction="always"
         android:actionLayout="@layout/progress_bar"
         android:visible="true"
-        />
+        /> -->
+
 </menu>

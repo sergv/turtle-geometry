@@ -8,6 +8,8 @@
               :implements [clojure.lang.IDeref
                            android.view.SurfaceHolder$Callback]
               :exposes-methods {onCreate superOnCreate
+                                onCreateOptionsMenu superOnCreateOptionsMenu
+                                onMenuItemSelected superOnMenuItemSelected
                                 onResume superOnResume
                                 onPause superOnPause
                                 onDestroy superOnDestroy
@@ -24,8 +26,10 @@
             GestureDetector GestureDetector$SimpleOnGestureListener
             ScaleGestureDetector ScaleGestureDetector$OnScaleGestureListener]
            [android.view Menu MenuInflater MenuItem]
-           [android.view LayoutInflater MotionEvent SurfaceHolder SurfaceView
-            View View$OnTouchListener ViewGroup Window]
+           [android.view KeyEvent LayoutInflater MotionEvent
+            SurfaceHolder SurfaceView
+            View View$OnKeyListener View$OnTouchListener
+            ViewGroup Window]
            [android.widget Button EditText ProgressBar
             TabHost TabHost$TabSpec TabHost$TabContentFactory TextView]
            [android.util AttributeSet]
@@ -43,7 +47,8 @@
            ;;  CommonTokenStream]
            ;; [org.turtle TurtleLexer TurtleParser]
            )
-  (:require [neko.init])
+  (:require [neko.init]
+            [neko.compilation])
   (:use [clojure.pprint :only (with-pprint-dispatch
                                 pprint
                                 *print-right-margin*
@@ -118,7 +123,8 @@
                         ;; seq of [[startx starty] [endx endy] color] line segments produced by turtle
                         lines])
 
-(defrecord UserOptions [^boolean show-graphics-when-run])
+(defrecord UserOptions [^boolean show-graphics-when-run
+                        ^boolean track-scaling-touches])
 
 (def ^{:const true} initial-turtle-state
   (TurtleState. [0 0] [0 0] 0 false Color/BLACK []))
@@ -178,41 +184,48 @@
 (declare eval-turtle-program draw-scene
          clear-intermed-bitmap redraw-indermed-bitmap)
 
+(defn make-scale-transform ^Matrix
+  [^org.turtle.geometry.TurtleGraphics activity
+   scale-factor]
+  (let [m ^Matrix (make-identity-transform)
+        draw-canvas ^Canvas (get-in @activity [:draw-state :draw-canvas])
+        width (.getWidth draw-canvas)
+        height (.getHeight draw-canvas)]
+    (.setScale m
+               scale-factor scale-factor
+               (float (/ width 2)) (float (/ height 2)))
+    m))
+
+(defn update-activity-view-transform
+  [^org.turtle.geometry.TurtleGraphics activity
+   ^Matrix new-transform]
+  (let [old-view-transform (draw-area-view-transform @activity)]
+    (swap! (.state activity)
+           assoc
+           :draw-area-view-transform
+           (matrix-mult old-view-transform new-transform)
+           :intermediate-transform
+           (make-identity-transform)))
+  (redraw-indermed-bitmap activity)
+  (draw-scene activity))
+
 (defn register-interaction-detectors [^org.turtle.geometry.TurtleGraphics activity
                                       ^View root]
   (let [pointer-id (atom nil)
 
         make-move-transform
-        (fn ^Matrix [^MotionEvent start
-                     ^MotionEvent end]
-          (let [m ^Matrix (make-identity-transform)
-                id @pointer-id
-                dx (- (.getX end id) (.getX start id))
-                dy (- (.getY end id) (.getY start id))]
+        (fn [dx dy]
+          (let [m ^Matrix (make-identity-transform)]
             (.setTranslate m dx dy)
             m))
-        make-scale-transform
-        (fn ^Matrix [scale-factor]
-          (let [m ^Matrix (make-identity-transform)
-                draw-canvas ^Canvas (get-in @activity [:draw-state :draw-canvas])
-                width (.getWidth draw-canvas)
-                height (.getHeight draw-canvas)]
-            (.setScale m
-                       scale-factor scale-factor
-                       (float (/ width 2)) (float (/ height 2)))
-            m))
-
-        update-activity-view-transform
-        (fn [^Matrix new-transform]
-          (let [old-view-transform (draw-area-view-transform @activity)]
-            (swap! (.state activity)
-                   assoc
-                   :draw-area-view-transform
-                   (matrix-mult old-view-transform new-transform)
-                   :intermediate-transform
-                   (make-identity-transform)))
-          (redraw-indermed-bitmap activity)
-          (draw-scene activity))
+        move-transform-from-events
+        (fn ^Matrix
+          ([^MotionEvent start
+            ^MotionEvent end]
+             (let [id @pointer-id
+                   dx (- (.getX end id) (.getX start id))
+                   dy (- (.getY end id) (.getY start id))]
+               (make-move-transform dx dy))))
 
         move-listener
         (proxy [GestureDetector$SimpleOnGestureListener] []
@@ -230,14 +243,15 @@
                      dist-y]
             (swap! (.state activity) assoc-in
                    [:intermediate-transform]
-                   (make-move-transform start current))
+                   (move-transform-from-events start current))
             (draw-scene activity)
             true)
           (onFling [^MotionEvent start
                     ^MotionEvent end
                     velocity-x
                     velocity-y]
-            (update-activity-view-transform (make-move-transform start end))
+            (update-activity-view-transform activity
+                                            (move-transform-from-events start end))
             true))
 
         scale-listener
@@ -249,14 +263,15 @@
                  (.getScaleFactor detector))
             (swap! (.state activity) assoc-in
                    [:intermediate-transform]
-                   (make-scale-transform (.getScaleFactor detector)))
+                   (make-scale-transform activity (.getScaleFactor detector)))
             (draw-scene activity)
             false)
           (^void onScaleEnd [^ScaleGestureDetector detector]
             (log "scale-listener, onScaleEnd: (.getScaleFactor detector) = %s"
                  (.getScaleFactor detector))
             (update-activity-view-transform
-             (make-scale-transform (.getScaleFactor detector)))))
+             activity
+             (make-scale-transform activity (.getScaleFactor detector)))))
 
         move-detector (GestureDetector. activity
                                         move-listener
@@ -270,10 +285,51 @@
        (^boolean onTouch [this ^View v ^MotionEvent event]
          (let [move-result (.onTouchEvent ^GestureDetector move-detector
                                           ^MotionEvent event)]
-           (if move-result
-             true
-             (.onTouchEvent ^ScaleGestureDetector scale-detector
-                            ^MotionEvent event))))))))
+           (cond move-result
+                 true
+                 (get-in @activity [:user-options :track-scaling-touches])
+                 (.onTouchEvent ^ScaleGestureDetector scale-detector
+                                ^MotionEvent event)
+                 :else
+                 false)))))
+    (.setOnKeyListener
+     root
+     (reify View$OnKeyListener
+       (^boolean onKey [this ^View v ^int key-code ^KeyEvent event]
+         ;; false
+         (let [code      (.getKeyCode event)]
+           (if (contains? #{KeyEvent/KEYCODE_DPAD_DOWN
+                            KeyEvent/KEYCODE_DPAD_LEFT
+                            KeyEvent/KEYCODE_DPAD_RIGHT
+                            KeyEvent/KEYCODE_DPAD_UP}
+                          code)
+             (do
+               (update-activity-view-transform
+                activity
+                (condp = code
+                  KeyEvent/KEYCODE_DPAD_DOWN
+                  (make-move-transform 0 -25)
+                  KeyEvent/KEYCODE_DPAD_LEFT
+                  (make-move-transform +25 0)
+                  KeyEvent/KEYCODE_DPAD_RIGHT
+                  (make-move-transform -25 0)
+                  KeyEvent/KEYCODE_DPAD_UP
+                  (make-move-transform 0 +25)
+                  :else
+                  (log "invalid key code: %s (%d)"
+                       (get {KeyEvent/KEYCODE_DPAD_DOWN
+                             "KEYCODE_DPAD_DOWN"
+                             KeyEvent/KEYCODE_DPAD_LEFT
+                             "KEYCODE_DPAD_LEFT"
+                             KeyEvent/KEYCODE_DPAD_RIGHT
+                             "KEYCODE_DPAD_RIGHT"
+                             KeyEvent/KEYCODE_DPAD_UP
+                             "KEYCODE_DPAD_UP"}
+                            code
+                            "UNKNOWN")
+                       code)))
+               true)
+             false)))))))
 
 
 
@@ -339,7 +395,7 @@
            :activity-tab-host tab-host
 
            :draw-state (DrawState. false nil nil)
-           :user-options (UserOptions. true)
+           :user-options (UserOptions. true true)
 
            :intermediate-transform (make-identity-transform) ;; creates indentity
            :turtle-program-thread nil
@@ -412,10 +468,10 @@
        (onClick [this unused-button]
          (let [turtle-thread (turtle-program-thread @activity)]
            (when turtle-thread
-             (clear-intermed-bitmap activity)
              (swap! (.state activity) assoc-in
                     [:turtle-state]
                     initial-turtle-state)
+             (clear-intermed-bitmap activity)
              (draw-scene activity)
              ;; (clear-draw-queue! (draw-area @activity))
              )))))
@@ -439,16 +495,58 @@
                (report-error activity (str "error while indenting:\n" e)))))))))
 
   (.setText (program-source-editor @this)
-            ;; "(dotimes [_ 10000]\n  (forward 1.5)\n  (left 1))"
-            "(forward 100)\n(left 90)\n(forward 100)\n")
-  (.setOnTouchListener (program-source-editor @this)
+            "(doseq [r [1 1.5 2 2.5 3]]\n  (dotimes [_ 360]\n    (forward r)\n    (left 1)))"
+            ;; "(forward 100)\n(left 90)\n(forward 100)\n"
+            )
+  ;; (.setOnTouchListener (program-source-editor @this)
+  ;;
+  ;;                      (make-double-tap-handler
+  ;;                       (fn [] (log "Double tapped source editor twice"))))
+  ;; (.setOnTouchListener (error-output @this)
+  ;;                      (make-double-tap-handler
+  ;;                       (fn [] (log "Double tapped error output twice"))))
+  )
 
-                       (make-double-tap-handler
-                        (fn [] (log "Double tapped source editor twice"))))
-  (.setOnTouchListener (error-output @this)
-                       (make-double-tap-handler
-                        (fn [] (log "Double tapped error output twice")))))
+(defn ^boolean -onCreateOptionsMenu [^org.turtle.geometry.TurtleGraphics this
+                                     ^Menu menu]
+  (.superOnCreateOptionsMenu this menu)
+  (.inflate ^MenuInflater (.getMenuInflater this)
+            (resource :menu :main)
+            menu)
+  true)
 
+(defn ^boolean -onMenuItemSelected [^org.turtle.geometry.TurtleGraphics this
+                                    feature-id
+                                    ^MenuItem item]
+  (let [zoom-in-factor 1.25
+        zoom-out-factor 0.75
+        item-id (.getItemId item)]
+    (cond
+     (= item-id (resource :id :menu_center_yourself))
+      (do
+        (swap! (.state this)
+               assoc
+               :draw-area-view-transform
+               (make-identity-transform)
+               :intermediate-transform
+               (make-identity-transform))
+        (redraw-indermed-bitmap this)
+        (draw-scene this)
+        true)
+      (= item-id (resource :id :menu_zoom_in))
+      (do
+        (update-activity-view-transform this
+                                        (make-scale-transform this
+                                                              zoom-in-factor))
+        true)
+      (= item-id (resource :id :menu_zoom_out))
+      (do
+        (update-activity-view-transform this
+                                        (make-scale-transform this
+                                                              zoom-out-factor))
+        true)
+      :else
+      (.superOnMenuItemSelected this feature-id item))))
 
 (defn -onResume [^org.turtle.geometry.TurtleGraphics this]
   (.superOnResume this))
@@ -458,7 +556,8 @@
 
 (defn -onDestroy [^org.turtle.geometry.TurtleGraphics this]
   (.superOnDestroy this)
-  (neko.init/deinit))
+  (neko.init/deinit)
+  (neko.compilation/clear-cache))
 
 (defn -onBackPressed [^org.turtle.geometry.TurtleGraphics this]
   (log "onBackPressed")

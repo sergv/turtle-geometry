@@ -10,13 +10,8 @@
   <android.view.SurfaceView android:id="@+id/draw_area"
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
-                            android:padding="@dimen/padding"
+                            android:padding="@dimen/no_padding"
+                            android:focusable="true"
                             />
-
-  <!-- <android.clojure.IndependentDrawer android:id="@+id/draw_area"
-                                     android:layout_width="match_parent"
-                                     android:layout_height="match_parent"
-                                     android:padding="@dimen/padding"
-                                     /> -->
 
 </LinearLayout>

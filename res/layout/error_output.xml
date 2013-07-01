@@ -12,15 +12,19 @@
             android:clickable="true"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:text="Errors appear here"
             android:padding="@dimen/padding"
+
+            android:text="@string/error_output_default_text"
             android:textSize="@dimen/font_size"
             android:typeface="monospace"
-            android:lines="@integer/error_output_max_lines"
+
+            android:scrollbars="vertical"
             android:scrollHorizontally="true"
             />
+
   <!-- android:maxWidth="@dimen/error_output_max_width" -->
   <!-- android:maxLines="@integer/error_output_max_lines" -->
+
 </LinearLayout>
 
 

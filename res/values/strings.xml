@@ -11,6 +11,10 @@
   <string name="duration_label">Drawing duration</string>
   <string name="duration_units_label">ms</string>
   <string name="default_duration">2000</string>
+  <string name="error_output_default_text">Errors appear here</string>
+  <string name="menu_center_yourself_title">Center yourself</string>
+  <string name="menu_zoom_in_title">Zoom in</string>
+  <string name="menu_zoom_out_title">Zoom out</string>
 
   <string name="graphics_tab_label">Graphics</string>
   <string name="errors_tab_label">Errors</string>

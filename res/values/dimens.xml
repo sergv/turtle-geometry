@@ -4,7 +4,10 @@
   <dimen name="font_size">20dp</dimen>
   <!-- <dimen name="font_size">20dp</dimen> -->
   <dimen name="padding">4dp</dimen>
+  <dimen name="no_padding">0dp</dimen>
   <dimen name="button_padding">4dp</dimen>
+  <dimen name="button_width">75dp</dimen>
+
   <dimen name="progress_bar_right_margin">5dp</dimen>
   <dimen name="progress_bar_min_height">50dp</dimen>
   <dimen name="progress_bar_min_width">50dp</dimen>

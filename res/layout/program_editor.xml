@@ -41,21 +41,21 @@
                     android:gravity="left">
 
         <Button android:id="@+id/button_run"
-                android:layout_width="wrap_content"
+                android:layout_width="@dimen/button_width"
                 android:layout_height="wrap_content"
                 android:text="@string/label_run"
                 android:padding="@dimen/button_padding"
                 />
 
         <Button android:id="@+id/button_stop"
-                android:layout_width="wrap_content"
+                android:layout_width="@dimen/button_width"
                 android:layout_height="wrap_content"
                 android:text="@string/label_stop"
                 android:padding="@dimen/button_padding"
                 />
 
         <Button android:id="@+id/button_clear"
-                android:layout_width="wrap_content"
+                android:layout_width="@dimen/button_width"
                 android:layout_height="wrap_content"
                 android:text="@string/label_clear"
                 android:padding="@dimen/button_padding"
@@ -69,21 +69,21 @@
                     android:gravity="left">
 
         <Button android:id="@+id/button_save"
-                android:layout_width="wrap_content"
+                android:layout_width="@dimen/button_width"
                 android:layout_height="wrap_content"
                 android:text="@string/label_save"
                 android:padding="@dimen/button_padding"
                 />
 
         <Button android:id="@+id/button_load"
-                android:layout_width="wrap_content"
+                android:layout_width="@dimen/button_width"
                 android:layout_height="wrap_content"
                 android:text="@string/label_load"
                 android:padding="@dimen/button_padding"
                 />
 
         <Button android:id="@+id/button_reindent"
-                android:layout_width="wrap_content"
+                android:layout_width="@dimen/button_width"
                 android:layout_height="wrap_content"
                 android:text="@string/label_reindent"
                 android:padding="@dimen/button_padding"
