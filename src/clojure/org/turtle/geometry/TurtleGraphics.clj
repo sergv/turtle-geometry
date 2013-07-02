@@ -192,11 +192,13 @@
 (def ^{:const true} intent-save-file 0)
 (def ^{:const true} intent-load-file 1)
 
-(defn text-input->int [^EditText input-field]
-  (Integer/valueOf ^String
-                   (.. input-field
-                       (getText)
-                       (toString))))
+(defn text-input->int [^EditText input-field default]
+  (let [s ^String (.. input-field
+                      (getText)
+                      (toString))]
+    (if (not (re-matches #"[0-9]+" s))
+      default
+      (Integer/valueOf s))))
 
 (defn report-error
   ([activity msg]
@@ -212,7 +214,7 @@
                                                   :errors_tab_label))))))
 
 (defn get-animation-duration [^org.turtle.geometry.TurtleGraphics activity]
-  (text-input->int (duration-entry @activity)))
+  (text-input->int (duration-entry @activity) 0))
 
 (declare eval-turtle-program draw-scene
          clear-intermed-bitmap redraw-indermed-bitmap)
