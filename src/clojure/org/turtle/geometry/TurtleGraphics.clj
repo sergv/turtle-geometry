@@ -1076,6 +1076,11 @@
                  (intern sandbox-ns 'pen-down pen-down)
                  (intern sandbox-ns 'log log)
 
+                 (intern sandbox-ns 'cos (fn [x] (Math/cos (deg->rad x))))
+                 (intern sandbox-ns 'sin (fn [x] (Math/sin (deg->rad x))))
+                 (intern sandbox-ns 'rcos (fn [x] (Math/cos (double x))))
+                 (intern sandbox-ns 'rsin (fn [x] (Math/sin (double x))))
+
                  (intern sandbox-ns '** clojure.math.numeric-tower/expt)
 
                  (intern sandbox-ns
