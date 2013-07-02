@@ -36,8 +36,9 @@
             View View$OnKeyListener View$OnTouchListener
             ViewGroup Window]
            [android.widget Button EditText ProgressBar
-            TabHost TabHost$TabSpec TabHost$TabContentFactory TextView Toast]
-           [android.util AttributeSet]
+            TabHost TabHost$TabSpec TabHost$TabContentFactory TabWidget
+            TextView Toast]
+           [android.util AttributeSet TypedValue]
            [android.util.Log]
 
            [java.io BufferedWriter BufferedReader
@@ -547,7 +548,16 @@
                     (. setIndicator graphics-tab-tag)
                     (. setContent (reify TabHost$TabContentFactory
                                     (createTabContent [unused-this _]
-                                      draw-area-layout)))))))
+                                      draw-area-layout))))))
+
+      (let [tab-widget ^TabWidget (.getTabWidget tab-host)
+            new-height (TypedValue/applyDimension
+                        TypedValue/COMPLEX_UNIT_DIP
+                        30
+                        (.getDisplayMetrics (.getResources this)))]
+        (dotimes [i (.getChildCount tab-widget)]
+          (set! (.height (.getLayoutParams (.getChildAt tab-widget i)))
+                new-height))))
 
     (.setOnClickListener
      button-run
