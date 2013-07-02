@@ -877,6 +877,7 @@
                                         (getHolder)
                                         (lockCanvas))]
       (try
+        (.drawColor surface-canvas Color/WHITE)
         (let [;;start-time (System/currentTimeMillis)
               ]
           ;; this draw on intermediate-bitmap in draw-state
