@@ -1113,6 +1113,11 @@
                           (sqrt expt gcd floor ceil round)])
 
                    (load-string program-text)))
+               (catch java.lang.StackOverflowError e
+                 (.runOnUiThread
+                  activity
+                  (fn []
+                    (report-error activity (str "Stack overflow error:\n" e)))))
                (catch InterruptedException _
                  (.runOnUiThread
                   activity
@@ -1126,7 +1131,7 @@
                                   (str "Error during turtle program evaluation:\n"
                                        e)))))))
            "turtle program thread"
-           (* 8 1024 1024))]
+           (* 16 1024 1024))]
       (let [accumulated-lines (get-in @activity [:turtle-state :lines])]
         (swap! (.state activity) assoc-in
                [:turtle-state]
