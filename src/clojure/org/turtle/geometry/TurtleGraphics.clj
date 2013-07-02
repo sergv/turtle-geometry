@@ -338,39 +338,40 @@
      (reify View$OnKeyListener
        (^boolean onKey [this ^View v ^int key-code ^KeyEvent event]
          ;; false
-         (let [code      (.getKeyCode event)]
-           (if (contains? #{KeyEvent/KEYCODE_DPAD_DOWN
-                            KeyEvent/KEYCODE_DPAD_LEFT
-                            KeyEvent/KEYCODE_DPAD_RIGHT
-                            KeyEvent/KEYCODE_DPAD_UP}
-                          code)
-             (do
-               (update-activity-view-transform
-                activity
-                (condp = code
-                  KeyEvent/KEYCODE_DPAD_DOWN
-                  (make-move-transform 0 -25)
-                  KeyEvent/KEYCODE_DPAD_LEFT
-                  (make-move-transform +25 0)
-                  KeyEvent/KEYCODE_DPAD_RIGHT
-                  (make-move-transform -25 0)
-                  KeyEvent/KEYCODE_DPAD_UP
-                  (make-move-transform 0 +25)
-                  :else
-                  (log "invalid key code: %s (%d)"
-                       (get {KeyEvent/KEYCODE_DPAD_DOWN
-                             "KEYCODE_DPAD_DOWN"
-                             KeyEvent/KEYCODE_DPAD_LEFT
-                             "KEYCODE_DPAD_LEFT"
-                             KeyEvent/KEYCODE_DPAD_RIGHT
-                             "KEYCODE_DPAD_RIGHT"
-                             KeyEvent/KEYCODE_DPAD_UP
-                             "KEYCODE_DPAD_UP"}
-                            code
-                            "UNKNOWN")
-                       code)))
-               true)
-             false)))))))
+         (if (and (= (.getAction event)
+                     KeyEvent/ACTION_DOWN)
+                  (contains? #{KeyEvent/KEYCODE_DPAD_DOWN
+                               KeyEvent/KEYCODE_DPAD_LEFT
+                               KeyEvent/KEYCODE_DPAD_RIGHT
+                               KeyEvent/KEYCODE_DPAD_UP}
+                             key-code))
+           (do
+             (update-activity-view-transform
+              activity
+              (condp = key-code
+                KeyEvent/KEYCODE_DPAD_DOWN
+                (make-move-transform 0 -25)
+                KeyEvent/KEYCODE_DPAD_LEFT
+                (make-move-transform +25 0)
+                KeyEvent/KEYCODE_DPAD_RIGHT
+                (make-move-transform -25 0)
+                KeyEvent/KEYCODE_DPAD_UP
+                (make-move-transform 0 +25)
+                :else
+                (log "invalid key code: %s (%d)"
+                     (get {KeyEvent/KEYCODE_DPAD_DOWN
+                           "KEYCODE_DPAD_DOWN"
+                           KeyEvent/KEYCODE_DPAD_LEFT
+                           "KEYCODE_DPAD_LEFT"
+                           KeyEvent/KEYCODE_DPAD_RIGHT
+                           "KEYCODE_DPAD_RIGHT"
+                           KeyEvent/KEYCODE_DPAD_UP
+                           "KEYCODE_DPAD_UP"}
+                          key-code
+                          "UNKNOWN")
+                     key-code)))
+             true)
+           false))))))
 
 
 
