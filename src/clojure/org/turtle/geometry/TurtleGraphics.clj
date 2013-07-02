@@ -654,16 +654,15 @@
                   (.getSupportFragmentManager this)
                   "confirm")
            true)
-         (save))
-
-       ;; (with-open [writer (BufferedWriter. (FileWriter. filename))]
-       ;;   (.write writer (.getText (program-source-editor @this))))
-       )
+         (save)))
      (= request-code intent-load-file)
      (let [uri (.getData data)
-           file (.getPath uri)]
+           filename (.getPath uri)]
        (.setText (program-source-editor @this)
-                 ^String (slurp file)))
+                 ^String (slurp filename))
+       (.show (Toast/makeText this
+                              (format "Loaded %s" filename)
+                              Toast/LENGTH_SHORT)))
      :else
      ;; ignore it
      nil)))
