@@ -15,8 +15,7 @@
                                 onDestroy superOnDestroy
                                 onBackPressed superOnBackPressed
                                 onActivityResult superOnActivityResult
-                                onSaveInstanceState superOnSaveInstanceState
-                                onRestoreInstanceState superOnRestoreInstanceState}
+                                onSaveInstanceState superOnSaveInstanceState}
               :state ^{:tag ActivityState} state
               :init init
               :constructors {[] []})
@@ -375,6 +374,87 @@
 
 
 
+(def save-state-config
+  (letfn [(save-matrix [activity-key
+                        key
+                        ^org.turtle.geometry.TurtleGraphics activity
+                        ^Bundle bundle]
+            (let [values (float-array 9 0)]
+              (.getValues ^Matrix (get-in @activity activity-key) values)
+              (.putFloatArray bundle key values)))
+          (restore-matrix [activity-key
+                           key
+                           ^org.turtle.geometry.TurtleGraphics activity
+                           ^Bundle bundle]
+            (let [m (Matrix.)]
+              (.setValues m (.getFloatArray bundle key))
+              (swap! (.state activity) assoc-in
+                     activity-key
+                     m)))]
+    [["intermediate-bitmap"
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^Bundle bundle]
+        (let [bitmap (get-in @activity
+                             [:draw-state :intermediate-bitmap])]
+          (.putParcelable bundle key bitmap)))
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^Bundle bundle]
+        (let [bitmap (.getParcelable bundle key)]
+          (swap! (.state activity) assoc-in
+                 [:draw-state :intermediate-bitmap]
+                 bitmap)))]
+     ["turtle-lines"
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^Bundle bundle]
+        (let [lines (get-in @activity [:turtle-state :lines])]
+          (.putFloatArray bundle
+                          (str key "-coords")
+                          (into-array Float/TYPE
+                                      (flatten
+                                       (map (fn [[p1 p2 _]] [p1 p2]) lines))))
+          (.putIntArray bundle
+                        (str key "-colors")
+                        (into-array Integer/TYPE
+                                    (map (fn [[_ _ color]] color) lines)))))
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^Bundle bundle]
+        (let [flat-pts (.getFloatArray bundle (str key "-coords"))
+              pts (vec (map vec (partition 2 (map vec (partition 2 flat-pts)))))
+              colors (vec (.getIntArray bundle (str key "-colors")))
+              res-lines (map (fn [pts color] (conj pts color)) pts colors)]
+          (swap! (.state activity) assoc-in
+                 [:turtle-state :lines]
+                 res-lines)))]
+     ["program-source"
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^Bundle bundle]
+        (.putString bundle
+                    key
+                    (str (.getText (program-source-editor @activity)))))
+      (fn [key
+           ^org.turtle.geometry.TurtleGraphics activity
+           ^Bundle bundle]
+        (.setText (program-source-editor @activity)
+                  (.getString bundle key)))]
+     ["turtle-view-transform"
+      #(save-matrix [:draw-area-view-transform] %1 %2 %3)
+      #(restore-matrix [:draw-area-view-transform] %1 %2 %3)]
+     ["intermediate-transform"
+      #(save-matrix [:intermediate-transform] %1 %2 %3)
+      #(restore-matrix [:intermediate-transform] %1 %2 %3)]]))
+
+(defn -onSaveInstanceState [^org.turtle.geometry.TurtleGraphics this
+                            ^Bundle bundle]
+  (.superOnSaveInstanceState this bundle)
+  (doseq [[key save _] save-state-config]
+    (save key this bundle)))
+
+
 (defn -onCreate [^org.turtle.geometry.TurtleGraphics this
                  ^Bundle bundle]
   (reset! *activity* this)
@@ -537,14 +617,10 @@
   (.setText (program-source-editor @this)
             ;; "(doseq [r [1 1.5 2 2.5 3]]\n  (dotimes [_ 360]\n    (forward r)\n    (left 1)))"
             "(forward 100)\n(left 90)\n(forward 100)\n")
-  ;; (.setOnTouchListener (program-source-editor @this)
-  ;;
-  ;;                      (make-double-tap-handler
-  ;;                       (fn [] (log "Double tapped source editor twice"))))
-  ;; (.setOnTouchListener (error-output @this)
-  ;;                      (make-double-tap-handler
-  ;;                       (fn [] (log "Double tapped error output twice"))))
-  )
+
+  (when bundle
+    (doseq [[key _ restore] save-state-config]
+      (restore key this bundle))))
 
 (defn ^boolean -onCreateOptionsMenu [^org.turtle.geometry.TurtleGraphics this
                                      ^Menu menu]
@@ -668,77 +744,6 @@
      ;; ignore it
      nil)))
 
-(def save-state-config
-  (letfn [(save-matrix [activity-key
-                        key
-                        ^org.turtle.geometry.TurtleGraphics activity
-                        ^Bundle bundle]
-            (let [values (float-array 9 0)]
-              (.getValues ^Matrix (get-in @activity activity-key) values)
-              (.putFloatArray bundle key values)))
-          (restore-matrix [activity-key
-                           key
-                           ^org.turtle.geometry.TurtleGraphics activity
-                           ^Bundle bundle]
-            (let [m (Matrix.)]
-              (.setValues m (.getFloatArray bundle key))
-              (swap! (.state activity) assoc-in
-                     activity-key
-                     m)))]
-    [["intermediate-bitmap"
-      (fn [key
-           ^org.turtle.geometry.TurtleGraphics activity
-           ^Bundle bundle]
-        (.putParcelable bundle key (get-in @activity
-                                           [:draw-state :intermediate-bitmap])))
-      (fn [key
-           ^org.turtle.geometry.TurtleGraphics activity
-           ^Bundle bundle]
-        (swap! (.state activity) assoc-in
-               [:draw-state :intermediate-bitmap]
-               (.getParcelable bundle key)))]
-     ["program-source"
-      (fn [key
-           ^org.turtle.geometry.TurtleGraphics activity
-           ^Bundle bundle]
-        (.putString bundle key (str (.getText (program-source-editor @activity)))))
-      (fn [key
-           ^org.turtle.geometry.TurtleGraphics activity
-           ^Bundle bundle]
-        (.setText (program-source-editor @activity)
-                  (.getString bundle key)))]
-     ["turtle-view-transform"
-      (fn [key
-           ^org.turtle.geometry.TurtleGraphics activity
-           ^Bundle bundle]
-        (save-matrix [:draw-area-view-transform] key activity bundle))
-      (fn [key
-           ^org.turtle.geometry.TurtleGraphics activity
-           ^Bundle bundle]
-        (restore-matrix [:draw-area-view-transform] key activity bundle))]
-     ["intermediate-transform"
-      (fn [key
-           ^org.turtle.geometry.TurtleGraphics activity
-           ^Bundle bundle]
-        (save-matrix [:intermediate-transform] key activity bundle))
-      (fn [key
-           ^org.turtle.geometry.TurtleGraphics activity
-           ^Bundle bundle]
-        (restore-matrix [:intermediate-transform] key activity bundle))]]))
-
-
-(defn -onSaveInstanceState [^org.turtle.geometry.TurtleGraphics this
-                            ^Bundle bundle]
-  (.superOnSaveInstanceState this bundle)
-  (doseq [[key save _] save-state-config]
-    (save key this bundle)))
-
-(defn -onRestoreInstanceState [^org.turtle.geometry.TurtleGraphics this
-                               ^Bundle bundle]
-  (.superOnRestoreInstanceState this bundle)
-  (doseq [[key _ restore] save-state-config]
-    (restore key this bundle)))
-
 
 (defn clear-intermed-bitmap [^org.turtle.geometry.TurtleGraphics this]
   (when-let [intermed-canvas (get-in @this [:draw-state :draw-canvas])]
@@ -750,12 +755,13 @@
                        width
                        height]
   (log "surfaceChanged")
-  (let [new-bitmap
-        (if-let [interm-bitmap (get-in @this [:draw-state :intermediate-bitmap])]
-          (Bitmap/createScaledBitmap interm-bitmap
-                                     width
-                                     height
-                                     true)
+  (let [interm-bitmap ^Bitmap (get-in @this [:draw-state :intermediate-bitmap])
+        use-old-bitmap? (and (not (nil? interm-bitmap))
+                             (= width (.getWidth interm-bitmap))
+                             (= height (.getHeight interm-bitmap)))
+        new-bitmap
+        (if use-old-bitmap?
+          interm-bitmap
           (Bitmap/createBitmap width height
                                Bitmap$Config/ARGB_8888))
         canvas (Canvas. new-bitmap)]
@@ -766,7 +772,8 @@
            :surface-available? true
            :intermediate-bitmap new-bitmap
            :draw-canvas canvas)
-    (.drawColor canvas Color/WHITE)
+    (when-not use-old-bitmap?
+      (redraw-indermed-bitmap this))
     (draw-scene this)))
 
 (defn -surfaceCreated [^org.turtle.geometry.TurtleGraphics this
