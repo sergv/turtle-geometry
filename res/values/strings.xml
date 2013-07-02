@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-  <string name="app_name">TurtleGraphics</string>
+  <string name="app_name">TurtleGeometry</string>
   <string name="label_run">Run</string>
   <string name="label_stop">Stop</string>
   <string name="label_clear">Clear</string>
