@@ -572,12 +572,18 @@
      button-stop
      (reify android.view.View$OnClickListener
        (onClick [this unused-button]
+         (.show (Toast/makeText activity
+                                "Stopping turtle"
+                                Toast/LENGTH_SHORT))
          (stop-turtle-thread activity))))
 
     (.setOnClickListener
      button-clear
      (reify android.view.View$OnClickListener
        (onClick [this unused-button]
+         (.show (Toast/makeText activity
+                                "Clearing"
+                                Toast/LENGTH_SHORT))
          (swap! (.state activity) assoc-in
                 [:turtle-state]
                 initial-turtle-state)
