@@ -939,10 +939,13 @@
 ;;         parser (TurtleParser. tokens)]
 ;;     (.program parser)))
 
+(def ^{:const true} pi 3.141592653589793238462643383279502884197)
 
 (defn ^double deg->rad [^double x]
   (* x (/ Math/PI 180.0)))
 
+(defn ^double rad->deg [^double x]
+  (* x (/ Math/PI 180.0)))
 
 (defn eval-turtle-program [program-text
                            ^org.turtle.geometry.TurtleGraphics activity]
@@ -1092,6 +1095,12 @@
                  (intern sandbox-ns 'rsin (fn [x] (Math/sin (double x))))
 
                  (intern sandbox-ns '** clojure.math.numeric-tower/expt)
+                 (intern sandbox-ns 'deg->rad deg->rad)
+                 (intern sandbox-ns 'rad->deg rad->deg)
+
+                 (intern sandbox-ns (with-meta 'pi
+                                      {:const true})
+                         pi)
 
                  (intern sandbox-ns
                          (with-meta 'to
