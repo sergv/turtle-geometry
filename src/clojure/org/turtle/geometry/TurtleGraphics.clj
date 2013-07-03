@@ -12,6 +12,7 @@
                                 onMenuItemSelected superOnMenuItemSelected
                                 onResume superOnResume
                                 onPause superOnPause
+                                onStop superOnStop
                                 onDestroy superOnDestroy
                                 onBackPressed superOnBackPressed
                                 onActivityResult superOnActivityResult
@@ -21,7 +22,8 @@
               :constructors {[] []})
   (:import [android.support.v4.app DialogFragment]
            [android.app Activity AlertDialog AlertDialog$Builder Dialog]
-           [android.content Context DialogInterface$OnClickListener Intent]
+           [android.content Context DialogInterface$OnClickListener
+            Intent SharedPreferences]
            [android.graphics Bitmap Bitmap$Config BitmapFactory Canvas
             Color Matrix Paint Paint$Cap Paint$Style Rect]
            [android.net Uri]
@@ -151,6 +153,8 @@
 (def ^{:const true} initial-turtle-state
   (TurtleState. [0 0] [0 0] 0 false Color/BLACK []))
 
+(def ^{:const true} shared-preferences-tag "turtle-geometry-preferences")
+(def ^{:const true} preferences-last-program-tag "last-program")
 
 (defrecord* ActivityState [^SurfaceView draw-area
                            ^EditText program-source-editor
@@ -161,6 +165,7 @@
 
                            ^DrawState draw-state
                            ^UserOptions user-options
+                           ^SharedPreferences global-preferences
 
                            ^Matrix intermediate-transform
                            ^Thread turtle-program-thread
@@ -179,6 +184,7 @@
                             nil
                             nil
 
+                            nil
                             nil
                             nil
 
@@ -518,6 +524,9 @@
 
            :draw-state (DrawState. false nil nil)
            :user-options (UserOptions. true true)
+           :global-preferences (.getSharedPreferences this
+                                                      shared-preferences-tag
+                                                      Context/MODE_PRIVATE)
 
            :intermediate-transform (make-identity-transform) ;; creates indentity
            :turtle-program-thread nil
@@ -632,9 +641,12 @@
                                     get-file-intent
                                     intent-load-file))))))
 
-  (.setText (program-source-editor @this)
-            ;; "(doseq [r [1 1.5 2 2.5 3]]\n  (dotimes [_ 360]\n    (forward r)\n    (left 1)))"
-            "(forward 100)\n(left 90)\n(forward 100)\n")
+  (let [preferences (global-preferences @this)]
+    (.setText (program-source-editor @this)
+              (.getString preferences
+                          preferences-last-program-tag
+                          ;; "(doseq [r [1 1.5 2 2.5 3]]\n  (dotimes [_ 360]\n    (forward r)\n    (left 1)))"
+                          "(forward 100)\n(left 90)\n(forward 100)\n")))
 
   (when bundle
     (doseq [[key _ restore] save-state-config]
@@ -691,6 +703,15 @@
 
 (defn -onPause [^org.turtle.geometry.TurtleGraphics this]
   (.superOnPause this))
+
+(defn -onStop [^org.turtle.geometry.TurtleGraphics this]
+  (.superOnStop this)
+  (let [preferences (global-preferences @this)
+        editor (.edit preferences)]
+    (.putString editor
+                preferences-last-program-tag
+                (str (.getText (program-source-editor @this))))
+    (.commit editor)))
 
 (defn -onDestroy [^org.turtle.geometry.TurtleGraphics this]
   (.superOnDestroy this)
