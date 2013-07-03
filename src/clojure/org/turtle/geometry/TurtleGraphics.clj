@@ -16,7 +16,8 @@
                                 onDestroy superOnDestroy
                                 onBackPressed superOnBackPressed
                                 onActivityResult superOnActivityResult
-                                onSaveInstanceState superOnSaveInstanceState}
+                                onSaveInstanceState superOnSaveInstanceState
+                                onConfigurationChanged superOnConfigurationChanged}
               :state ^{:tag ActivityState} state
               :init init
               :constructors {[] []})
@@ -69,12 +70,12 @@
                                         ;; draw-grid
                                         with-saved-matrix)]))
 
-(defn log
+(defmacro log
   ([msg]
      ;; do nothing in release
-     ;; (android.util.Log/d "TurtleGeometry" msg)
+     ;; `(android.util.Log/d "TurtleGeometry" ~msg)
      )
-  ([msg & args] (log (apply format msg args))))
+  ([msg & args] `(log (apply format ~msg ~args))))
 
 (defmacro draw-with-page-transform [canvas-var transform-matrix & body]
   `(with-saved-matrix ~canvas-var
@@ -463,6 +464,9 @@
   (doseq [[key save _] save-state-config]
     (save key this bundle)))
 
+(defn -onConfigurationChanged [^org.turtle.geometry.TurtleGraphics this
+                               configuration]
+  (.superOnConfigurationChanged this configuration))
 
 (defn -onCreate [^org.turtle.geometry.TurtleGraphics this
                  ^Bundle bundle]
@@ -905,6 +909,7 @@
                         ^Paint (antialiasing-paint)))))))
 
 (defn draw-scene [^org.turtle.geometry.TurtleGraphics this]
+  (log "drawing scene")
   (if (get-in @this [:draw-state :surface-available?])
     (if-let [surface-canvas ^Canvas (.. (draw-area @this)
                                         (getHolder)
@@ -923,7 +928,6 @@
                         0.0 ;; top
                         nil ;; paint
                         ))
-          ;; draw on surface-canvas directly if you wish
 
           (with-centered-canvas surface-canvas
             (draw-with-page-transform
@@ -1108,7 +1112,6 @@
                  (intern sandbox-ns 'pen-up? pen-up?)
                  (intern sandbox-ns 'pen-up pen-up)
                  (intern sandbox-ns 'pen-down pen-down)
-                 (intern sandbox-ns 'log log)
 
                  (intern sandbox-ns 'cos (fn [x] (Math/cos (deg->rad x))))
                  (intern sandbox-ns 'sin (fn [x] (Math/sin (deg->rad x))))
