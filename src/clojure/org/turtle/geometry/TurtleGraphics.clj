@@ -1089,7 +1089,20 @@
             (stop-if-interrupted)
             (swap! (.state activity) assoc-in
                    [:turtle-state :angle]
-                   new-heading))]
+                   new-heading))
+
+          (use-color
+            ([new-color]
+               (stop-if-interrupted)
+               (swap! (.state activity) assoc-in
+                      [:turtle-state :color]
+                      new-color))
+            ([r g b]
+               (use-color (Color/argb 0xff r g b))))
+
+          (get-color []
+            (stop-if-interrupted)
+            (get-in @activity [:turtle-state :color]))]
     (let [turtle-thread
           (Thread.
            (.getThreadGroup (Thread/currentThread))
@@ -1112,6 +1125,18 @@
                  (intern sandbox-ns 'pen-up? pen-up?)
                  (intern sandbox-ns 'pen-up pen-up)
                  (intern sandbox-ns 'pen-down pen-down)
+
+                 (intern sandbox-ns 'use-color use-color)
+                 (intern sandbox-ns 'get-color get-color)
+
+                 (intern sandbox-ns 'red (Color/argb 0xff 0xdc 0x32 0x2f))
+                 (intern sandbox-ns 'orange (Color/argb 0xff 0xcb 0x4b 0x16))
+                 (intern sandbox-ns 'yellow (Color/argb 0xff 0xb5 0x89 0x00))
+                 (intern sandbox-ns 'green (Color/argb 0xff 0x85 0x99 0x00))
+                 (intern sandbox-ns 'cyan (Color/argb 0xff 0x2a 0xa1 0x98))
+                 (intern sandbox-ns 'blue (Color/argb 0xff 0x26 0x8b 0xd2))
+                 (intern sandbox-ns 'violet (Color/argb 0xff 0x6c 0x71 0xc4))
+                 (intern sandbox-ns 'magenta (Color/argb 0xff 0xd3 0x36 0x82))
 
                  (intern sandbox-ns 'cos (fn [x] (Math/cos (deg->rad x))))
                  (intern sandbox-ns 'sin (fn [x] (Math/sin (deg->rad x))))
@@ -1137,18 +1162,15 @@
                                       {:macro true
                                        :arglists '([invokation _ cond & body])})
                          (fn iter [invokation _ condition & body]
-                           (cond (number? condition)
-                                 `(dotimes [_# ~condition]
-                                    ~@body)
-                                 :else
-                                 `(loop []
+                           `(let [res# ~condition]
+                              (if (number? res#)
+                                (dotimes [_# res#]
+                                  ~@body)
+                                (when res#
+                                  (loop []
+                                    ~@body
                                     (when ~condition
-                                      ~@body
-                                      (recur)))
-                                 ;; (throw (RuntimeException.
-                                 ;;         (format "invalid condition in repeat loop: %s"
-                                 ;;                 cond)))
-                                 )))
+                                      (recur))))))))
 
                  (binding [*ns* sandbox-ns]
                    (use '[clojure.core])
