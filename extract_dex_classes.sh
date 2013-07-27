@@ -13,7 +13,7 @@ fi
 
 "$SDK_HOME/platform-tools/dexdump" -f "${target}" | \
     awk "/^[ \t]*Class[ \t]*descriptor[ \t]*:[ \t]*'L[^;']*;'/" | \
-    sed -r "s,^.*L([^;']*).*,\1," | \
+    sed -r "s,^.*'L([^;']*).*,\1," | \
     sort -u
 
 exit 0

@@ -48,16 +48,93 @@ Intended for use with Abelson's book going under the same name."
              {:sdk-path "/home/sergey/projects/android/android-sdk-linux"
               :gen-path "bin"
 
-              :enable-dynamic-compilation true
+              :enable-dynamic-compilation false
               :repl-device-port 10001
               :repl-local-port 10001
 
-              :external-classes-paths ["/home/sergey/projects/android/android-sdk-linux/extras/android/support/v4/android-support-v4.jar"]
+              :accept-file-func
+              (fn [^String name]
+                (or (and (re-find #"neko/init.*\.class$" name)
+                         (not (re-find #"compilation" name)))
+
+                    (re-find #"TurtleGraphics.*interact" name)
+                    (and (re-find #"android/support/v4/app" name)
+                         (not (re-find #"Notification" name))
+                         (not (re-find #"NavUtils" name))
+                         (not (re-find #"ShapeCompat" name)))
+
+                    (re-find #"clojure/stacktrace__init" name)
+                    (re-find #"clojure/template__init" name)
+                    ;; (re-find #"clojure/uuid__init" name)
+                    ;; (re-find #"clojure/uuid\$loading" name)
+                    (re-find #"clojure/walk__init" name)
+                    (re-find #"clojure/core\$bean\.class" name)
+
+                    (and (re-find #".*\.class$" name)
+                         (not (re-find #"clojure.*bean" name))
+
+                         ;; (not (re-find #"clojure/asm" name))
+                         (not (re-find #"clojure/data" name))
+                         (not (re-find #"clojure/inspector" name))
+                         ;; (not (re-find #"clojure/instant" name))
+                         ;; (not (re-find #"clojure/java" name))
+                         (not (re-find #"clojure/lang/.*XML" name))
+                         (not (re-find #"clojure/main" name))
+                         (not (re-find #"clojure/reflect" name))
+                         (not (re-find #"clojure/repl" name))
+                         (not (re-find #"clojure/.*pretty_writer" name))
+                         (not (re-find #"clojure/.*pprint" name))
+                         (not (re-find #"clojure/stacktrace" name))
+                         (not (re-find #"clojure/template" name))
+                         (not (re-find #"clojure/test" name))
+                         ;; (not (re-find #"clojure/uuid" name))
+                         (not (re-find #"clojure/walk" name))
+                         (not (re-find #"clojure/xml" name))
+                         (not (re-find #"clojure/zip" name))
+
+                         ;; (not (re-find #"clojure/core\$emit_protocol" name))
+                         ;; (not (re-find #"clojure/core\$emit_method_builder" name))
+                         ;; (not (re-find #"clojure/core\$emit_hinted" name))
+                         ;; (not (re-find #"clojure/core\$emit_impl" name))
+                         ;; (not (re-find #"clojure/core\$emit_deftype" name))
+                         ;; (not (re-find #"clojure/core\$emit_extend" name))
+
+                         (not (re-find #"android/clojure/graphic/Transformable" name))
+                         (not (re-find #"android/clojure/graphic/Transformation" name))
+                         (not (re-find #"android/clojure/graphic/transformation" name))
+
+                         (not (re-find #"android/support/v4" name))
+
+
+                         (not (re-find #"android/annotation" name))
+                         ;; (not (re-find #"android/support/v4" name))
+
+                         (not (re-find #"com/sattvik" name))
+                         (not (re-find #"com/android" name))
+
+                         (not (re-find #"build/.*" name))
+                         (not (re-find #"clojure/java/browse_ui.*" name))
+                         (not (re-find #"clojure/java/javadoc.*" name))
+                         (not (re-find #"clojure/java/shell.*" name))
+                         (not (re-find #"clojure/lang/Repl" name))
+                         (not (re-find #"clojure/lang/Script" name))
+                         (not (re-find #"interact.*" name))
+                         (not (re-find #"using/Active" name))
+                         (not (re-find #"jsint/Listener" name))
+                         (not (re-find #"jsint/Listener11" name))
+                         (not (re-find #"jsint/Listener11swing" name))
+                         (not (re-find #"jsint/SchemeApplet" name))
+                         )))
+              :proguard-opts ["-ignorewarnings"]
+              :proguard-conf-path "proguard.cfg"
+
+              :external-classes-paths ["/home/sergey/projects/android/android-sdk-linux/extras/android/support/v4/android-support-v4.jar"
+                                       "/home/sergey/projects/android/clojure/turtle_geometry/jscheme-7.2/lib/jscheme.jar"]
 
               ;; Uncomment this if dexer fails with OutOfMemoryException
               ;; :force-dex-optimize true
-              :dex-opts ["-JXmx4096M"]
-              :dex-aux-opts ["--num-threads=2"]
+              :dex-opts ["-JXmx4096M" "--num-threads=2"]
+              ;; :dex-aux-opts []
 
               :min-version "10"
               :target-version "15"

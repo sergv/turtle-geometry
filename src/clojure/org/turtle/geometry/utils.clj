@@ -10,10 +10,10 @@
   ([id] `(resource :id ~id))
   ([resource-type resource-name]
      `(. ~(case resource-type
+            :drawable org.turtle.geometry.R$drawable
             :id       org.turtle.geometry.R$id
             :layout   org.turtle.geometry.R$layout
             :menu     org.turtle.geometry.R$menu
-            :drawable org.turtle.geometry.R$drawable
             :string   org.turtle.geometry.R$string
             (throw (java.lang.RuntimeException
                     (str "invalid resource type: " resource-type))))

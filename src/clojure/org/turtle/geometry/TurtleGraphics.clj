@@ -45,7 +45,11 @@
            [android.util.Log]
 
            [java.io BufferedWriter BufferedReader
-            File FileReader FileWriter]
+            InputStreamReader
+            File FileReader FileWriter
+            PrintWriter
+            StringReader StringWriter]
+           [java.nio.charset Charset]
            [java.util.concurrent
             ConcurrentLinkedQueue
             LinkedBlockingQueue
@@ -55,27 +59,49 @@
            ;; [org.antlr.runtime ANTLRStringStream
            ;;  CommonTokenStream]
            ;; [org.turtle TurtleLexer TurtleParser]
-           )
-  (:require [neko.init]
-            [neko.compilation])
-  (:use [clojure.test :only (function?)]
-        [clojure.math.numeric-tower :only (sqrt)]
+           [jscheme JScheme SchemePair]
+           [jsint E Evaluator$InterruptedException InputPort Pair Procedure Symbol])
+  ;; (:require [neko.init]
+  ;;  [neko.compilation]
+  ;;  )
+  (:use [clojure.math.numeric-tower :only (sqrt)]
         [org.turtle.geometry.utils]
-        [neko.init]
+        ;; [neko.init]
         [android.clojure.util :only (android-resource
                                      defrecord*
                                      make-double-tap-handler
-                                     make-ui-dimmer)]
-        [android.clojure.graphic :only (color->paint
-                                        ;; draw-grid
-                                        with-saved-matrix)]))
+                                     make-ui-dimmer)]))
+
+;;;; tooked from android-util's graphic.clj
+
+(defn ^Paint color->paint
+  ([argb]
+     (let [p (Paint.)]
+       (.setColor p argb)
+       p))
+  ([alpha red green blue]
+     (color->paint (Color/argb alpha red green blue))))
+
+(defmacro with-saved-matrix [canvas-var & body]
+  `(try
+     (.save ^Canvas ~canvas-var Canvas/MATRIX_SAVE_FLAG)
+     ~@body
+     (finally
+       (.restore ^Canvas ~canvas-var))))
+
+;;;;
+
+(defn log-func
+  ([msg]
+     ;; do nothing in release
+     (android.util.Log/d "TurtleGeometry" msg))
+  ([msg & args] (log-func (apply format msg args))))
 
 (defmacro log
   ([msg]
      ;; do nothing in release
-     ;; `(android.util.Log/d "TurtleGeometry" ~msg)
-     )
-  ([msg & args] `(log (apply format ~msg ~args))))
+     `(android.util.Log/d "TurtleGeometry" ~msg))
+  ([msg & args] `(log (format ~msg ~@args))))
 
 (defmacro draw-with-page-transform [canvas-var transform-matrix & body]
   `(with-saved-matrix ~canvas-var
@@ -110,7 +136,7 @@
     (.postConcat tmp m2)
     tmp))
 
-(defn ^Paint line-paint [color]
+(defn line-paint ^Paint [color]
   (let [p ^Paint (color->paint color)]
     (doto p
       ;; (.setStrokeWidth ,,, 2)
@@ -167,6 +193,7 @@
                            ^DrawState draw-state
                            ^UserOptions user-options
                            ^SharedPreferences global-preferences
+                           ^JScheme jscheme
 
                            ^Matrix intermediate-transform
                            ^Thread turtle-program-thread
@@ -185,6 +212,7 @@
                             nil
                             nil
 
+                            nil
                             nil
                             nil
                             nil
@@ -212,7 +240,7 @@
   ([activity msg]
      (report-error activity msg true))
   ([^org.turtle.geometry.TurtleGraphics activity
-     ^String msg
+    ^String msg
     switch-to-errors-tab]
      (.setText (error-output @activity) msg)
      (when switch-to-errors-tab
@@ -255,7 +283,8 @@
 (defn stop-turtle-thread [^org.turtle.geometry.TurtleGraphics activity]
   (let [turtle-thread (turtle-program-thread @activity)]
     (when turtle-thread
-      (.interrupt turtle-thread)
+      (.interrupt (.getEvaluator (jscheme @activity)) turtle-thread)
+      ;; (.interrupt turtle-thread)
       (swap! (.state activity) assoc :turtle-program-thread nil)
       (.join turtle-thread))))
 
@@ -471,7 +500,7 @@
 (defn -onCreate [^org.turtle.geometry.TurtleGraphics this
                  ^Bundle bundle]
   (reset! *activity* this)
-  (neko.init/init this :port 10001)
+  ;; (neko.init/init this :port 10001)
   (doto this
     (. superOnCreate bundle)
     (. requestWindowFeature Window/FEATURE_INDETERMINATE_PROGRESS)
@@ -531,10 +560,11 @@
            :global-preferences (.getSharedPreferences this
                                                       shared-preferences-tag
                                                       Context/MODE_PRIVATE)
+           :jscheme (JScheme.)
 
-           :intermediate-transform (make-identity-transform) ;; creates indentity
+           :intermediate-transform (make-identity-transform) ;; creates identity
            :turtle-program-thread nil
-           :draw-area-view-transform (make-identity-transform) ;; creates indentity
+           :draw-area-view-transform (make-identity-transform) ;; creates identity
            :turtle-bitmap rotated-turtle-bitmap
            :turtle-state initial-turtle-state)
 
@@ -643,14 +673,27 @@
                       "*.tg")
            (.startActivityForResult activity
                                     get-file-intent
-                                    intent-load-file))))))
+                                    intent-load-file)))))
+
+    ;; initialize scheme by loading init file
+    (log "loading jscheme init files...")
+    (try
+      (with-open [input (BufferedReader.
+                         (InputStreamReader.
+                          (.. activity (getResources)
+                              (getAssets)
+                              (open "jscheme.init"))))]
+        (.load (jscheme @this) input))
+      (log "loading jscheme init files... ok")
+      (catch Exception e
+        (log "Exception while initializing jscheme: %s" e))))
 
   (let [preferences (global-preferences @this)]
     (.setText (program-source-editor @this)
               (.getString preferences
                           preferences-last-program-tag
                           ;; "(doseq [r [1 1.5 2 2.5 3]]\n  (dotimes [_ 360]\n    (forward r)\n    (left 1)))"
-                          "(forward 100)\n(left 90)\n(forward 100)\n")))
+                          "(use-color magenta)\n(forward 100)\n(left 90)\n(forward 100)\n")))
 
   (when bundle
     (doseq [[key _ restore] save-state-config]
@@ -672,35 +715,35 @@
         item-id (.getItemId item)]
     (cond
      (= item-id (resource :id :menu_center_yourself))
-      (do
-        (swap! (.state this)
-               assoc
-               :draw-area-view-transform
-               (make-identity-transform)
-               :intermediate-transform
-               (make-identity-transform))
-        (redraw-indermed-bitmap this)
-        (draw-scene this)
-        true)
-      (= item-id (resource :id :menu_zoom_in))
-      (do
-        (update-activity-view-transform this
-                                        (make-scale-transform this
-                                                              zoom-in-factor))
-        true)
-      (= item-id (resource :id :menu_zoom_out))
-      (do
-        (update-activity-view-transform this
-                                        (make-scale-transform this
-                                                              zoom-out-factor))
-        true)
-      (= item-id (resource :id :menu_refresh))
-      (do
-        (redraw-indermed-bitmap this)
-        (draw-scene this)
-        true)
-      :else
-      (.superOnMenuItemSelected this feature-id item))))
+     (do
+       (swap! (.state this)
+              assoc
+              :draw-area-view-transform
+              (make-identity-transform)
+              :intermediate-transform
+              (make-identity-transform))
+       (redraw-indermed-bitmap this)
+       (draw-scene this)
+       true)
+     (= item-id (resource :id :menu_zoom_in))
+     (do
+       (update-activity-view-transform this
+                                       (make-scale-transform this
+                                                             zoom-in-factor))
+       true)
+     (= item-id (resource :id :menu_zoom_out))
+     (do
+       (update-activity-view-transform this
+                                       (make-scale-transform this
+                                                             zoom-out-factor))
+       true)
+     (= item-id (resource :id :menu_refresh))
+     (do
+       (redraw-indermed-bitmap this)
+       (draw-scene this)
+       true)
+     :else
+     (.superOnMenuItemSelected this feature-id item))))
 
 (defn -onResume [^org.turtle.geometry.TurtleGraphics this]
   (.superOnResume this))
@@ -719,8 +762,8 @@
 
 (defn -onDestroy [^org.turtle.geometry.TurtleGraphics this]
   (.superOnDestroy this)
-  (neko.init/deinit)
-  (neko.compilation/clear-cache)
+  ;; (neko.init/deinit)
+  ;; (neko.compilation/clear-cache)
   (stop-turtle-thread this))
 
 (defn -onBackPressed [^org.turtle.geometry.TurtleGraphics this]
@@ -909,14 +952,14 @@
                         ^Paint (antialiasing-paint)))))))
 
 (defn draw-scene [^org.turtle.geometry.TurtleGraphics this]
-  (log "drawing scene")
+  ;; (log "drawing scene")
   (if (get-in @this [:draw-state :surface-available?])
     (if-let [surface-canvas ^Canvas (.. (draw-area @this)
                                         (getHolder)
                                         (lockCanvas))]
       (try
         (.drawColor surface-canvas Color/WHITE)
-        (let [;;start-time (System/currentTimeMillis)
+        (let [ ;;start-time (System/currentTimeMillis)
               ]
           ;; this draw on intermediate-bitmap in draw-state
           (draw-with-page-transform
@@ -967,23 +1010,24 @@
 (def ^{:const true} pi 3.141592653589793238462643383279502884197)
 
 (defn ^double deg->rad [^double x]
-  (* x (/ Math/PI 180.0)))
+  (* x (/ pi 180.0)))
 
 (defn ^double rad->deg [^double x]
-  (* x (/ Math/PI 180.0)))
+  (* x (/ pi 180.0)))
 
-(defn eval-turtle-program [program-text
+(defn scheme-list->clojure-list [^Pair p]
+  (lazy-seq
+   (when-not (.isEmpty p)
+     (cons (.first p) (scheme-list->clojure-list (.rest p))))))
+
+(defn eval-turtle-program [^String program-text
                            ^org.turtle.geometry.TurtleGraphics activity]
-  (letfn [(stop-if-interrupted []
-            (when (.isInterrupted (Thread/currentThread))
-              (throw (InterruptedException.))))
-
-          (move [dist]
+  (letfn [(move [dist]
             (let [theta (get-in @activity [:turtle-state :angle])
                   pos   (get-in @activity [:turtle-state :position])
                   color (get-in @activity [:turtle-state :color])
-                  delta-x (* dist (Math/cos (deg->rad theta)))
-                  delta-y (* dist (Math/sin (deg->rad theta)))
+                  delta-x (* dist (StrictMath/cos (deg->rad theta)))
+                  delta-y (* dist (StrictMath/sin (deg->rad theta)))
                   delta [delta-x delta-y]
                   new-pos (map + delta pos)
                   [old-x old-y] pos
@@ -992,13 +1036,13 @@
 
                   anim-duration (get-animation-duration activity)]
 
-              (stop-if-interrupted)
+              ;; (stop-if-interrupted)
               (swap! (.state activity) assoc-in
                      [:turtle-state :prev-position]
                      pos)
               (let [start-time (System/currentTimeMillis)]
                 (loop []
-                  (stop-if-interrupted)
+                  ;; (stop-if-interrupted)
                   (let [curr-time (System/currentTimeMillis)
                         diff (- curr-time start-time)]
                     (assert (<= 0 diff))
@@ -1032,7 +1076,7 @@
 
               (let [start-time (System/currentTimeMillis)]
                 (loop []
-                  (stop-if-interrupted)
+                  ;; (stop-if-interrupted)
                   (let [curr-time (System/currentTimeMillis)
                         diff (- curr-time start-time)]
                     (assert (<= 0 diff))
@@ -1047,137 +1091,153 @@
               (swap! (.state activity) assoc-in
                      [:turtle-state :angle]
                      (+ theta delta))
-              (draw-scene activity)))
+              (draw-scene activity)))]
+    (let [procs {"forward" (proxy [Procedure] [1 1]
+                             (apply [^objects args]
+                               (let [dist (aget args 0)]
+                                 (move dist))))
+                 "fd" "forward"
+                 "backward" (proxy [Procedure] [1 1]
+                              (apply [^objects args]
+                                (let [dist (aget args 0)]
+                                  (move (- dist)))))
+                 "bd" "backward"
+                 "bk" "backward"
+                 "left" (proxy [Procedure] [1 1]
+                          (apply [^objects args]
+                            (let [delta (aget args 0)]
+                              (rotate (- delta)))))
+                 "lt" "left"
+                 "right" (proxy [Procedure] [1 1]
+                           (apply [^objects args]
+                             (let [delta (aget args 0)]
+                               (rotate delta))))
+                 "rt" "right"
+                 "pen-up?" (proxy [Procedure] [0 0]
+                             (apply [^objects args]
+                               (get-in @activity [:turtle-state :pen-up?])))
+                 "pen-up" (proxy [Procedure] [0 0]
+                            (apply [^objects args]
+                              (swap! (.state activity) assoc-in
+                                     [:turtle-state :pen-up?]
+                                     true)))
+                 "pen-down" (proxy [Procedure] [0 0]
+                              (apply [^objects args]
+                                (swap! (.state activity) assoc-in
+                                       [:turtle-state :pen-up?]
+                                       false)))
+                 "heading" (proxy [Procedure] [0 0]
+                             (apply [^objects args]
+                               (get-in @activity [:turtle-state :angle])))
+                 "set-heading" (proxy [Procedure] [1 1]
+                                 (apply [^objects args]
+                                   (let [new-heading (aget args 0)]
+                                     (swap! (.state activity) assoc-in
+                                            [:turtle-state :angle]
+                                            new-heading))))
+                 "use-color"
+                 (proxy [Procedure] [1 3]
+                   (apply [^objects args]
+                     (let [nargs (alength args)
+                           r (aget args 0)
+                           rest ^Pair (aget args 1)
+                           new-color
+                           (cond (.isEmpty rest)
+                                 ;; here r is not red component but encoded
+                                 ;; argb quadruple
+                                 r
+                                 (and (= 2 (.length rest))
+                                      (number? (.first rest))
+                                      (number? (.second rest)))
+                                 (let [g (.first rest)
+                                       b (.second rest)]
+                                   (Color/argb 0xff r g b))
+                                 :else
+                                 (E/error
+                                  (format "Invalid arguments to procedure %s: expected 1 (encoded color) or 3 (rgb) integers, but got: %s"
+                                          (.getName ^Procedure this)
+                                          (Pair. r rest))))]
 
-          (forward [dist]
-            (stop-if-interrupted)
-            (move dist))
+                       (swap! (.state activity) assoc-in
+                              [:turtle-state :color]
+                              new-color))))
+                 "get-color" (proxy [Procedure] [0 0]
+                               (apply [^objects args]
+                                 (get-in @activity [:turtle-state :color])))
 
-          (backward [dist]
-            (stop-if-interrupted)
-            (move (- dist)))
+                 "cos" (proxy [Procedure] [1 1]
+                         (apply [^objects args]
+                           (let [x (aget args 0)]
+                             (StrictMath/cos (deg->rad x)))))
+                 "sin" (proxy [Procedure] [1 1]
+                         (apply [^objects args]
+                           (let [x (aget args 0)]
+                             (StrictMath/sin (deg->rad x)))))
+                 "rcos" (proxy [Procedure] [1 1]
+                          (apply [^objects args]
+                            (let [x (aget args 0)]
+                              (StrictMath/cos (double x)))))
+                 "rsin" (proxy [Procedure] [1 1]
+                          (apply [^objects args]
+                            (let [x (aget args 0)]
+                              (StrictMath/sin (double x)))))
+                 "**" (proxy [Procedure] [2 2]
+                        (apply [^objects args]
+                          (let [a (aget args 0)
+                                b (aget args 1)]
+                            (clojure.math.numeric-tower/expt a b))))
+                 "deg->rad" (proxy [Procedure] [1 1]
+                              (apply [^objects args]
+                                (let [x (aget args 0)]
+                                  (deg->rad x))))
+                 "rad->deg" (proxy [Procedure] [1 1]
+                              (apply [^objects args]
+                                (let [x (aget args 0)]
+                                  (rad->deg x))))
 
-          (left [delta]
-            (stop-if-interrupted)
-            (rotate (- delta)))
-
-          (right [delta]
-            (stop-if-interrupted)
-            (rotate delta))
-
-          (pen-up? []
-            (stop-if-interrupted)
-            (get-in @activity [:turtle-state :pen-up?]))
-
-          (pen-up []
-            (stop-if-interrupted)
-            (swap! (.state activity) assoc-in
-                   [:turtle-state :pen-up?]
-                   true))
-
-          (pen-down []
-            (stop-if-interrupted)
-            (swap! (.state activity) assoc-in
-                   [:turtle-state :pen-up?]
-                   false))
-
-          (heading []
-            (stop-if-interrupted)
-            (get-in @activity [:turtle-state :angle]))
-
-          (set-heading [new-heading]
-            (stop-if-interrupted)
-            (swap! (.state activity) assoc-in
-                   [:turtle-state :angle]
-                   new-heading))
-
-          (use-color
-            ([new-color]
-               (stop-if-interrupted)
-               (swap! (.state activity) assoc-in
-                      [:turtle-state :color]
-                      new-color))
-            ([r g b]
-               (use-color (Color/argb 0xff r g b))))
-
-          (get-color []
-            (stop-if-interrupted)
-            (get-in @activity [:turtle-state :color]))]
-    (let [turtle-thread
+                 "log" (proxy [Procedure] [1 Integer/MAX_VALUE]
+                              (apply [^objects args]
+                                (let [arglist (scheme-list->clojure-list
+                                                 (Pair. (aget args 0)
+                                                        (aget args 1)))]
+                                  ;; (log "original arglist = %s" (vec args))
+                                  ;; (log "converted arglist = %s" (vec arglist))
+                                  (apply log-func arglist))))}
+          constants {"red" (Color/argb 0xff 0xdc 0x32 0x2f)
+                     "orange" (Color/argb 0xff 0xcb 0x4b 0x16)
+                     "yellow" (Color/argb 0xff 0xb5 0x89 0x00)
+                     "green" (Color/argb 0xff 0x85 0x99 0x00)
+                     "cyan" (Color/argb 0xff 0x2a 0xa1 0x98)
+                     "blue" (Color/argb 0xff 0x26 0x8b 0xd2)
+                     "violet" (Color/argb 0xff 0x6c 0x71 0xc4)
+                     "magenta" (Color/argb 0xff 0xd3 0x36 0x82)
+                     "pi" pi}
+          scm (jscheme @activity)
+          evaluator (.getEvaluator scm)
+          bind-value (fn [name value]
+                       (.setGlobalValue scm name value))
+          bind-proc (fn [real-name resolved-name]
+                      (when-let [proc ^Procedure (get procs resolved-name)]
+                        (if (string? proc)
+                          (recur real-name proc)
+                          (do
+                            (bind-value real-name proc)
+                            ;; bind name only if this is original procedure
+                            (when (= real-name resolved-name)
+                              (.setName proc real-name))))))
+          turtle-thread
           (Thread.
            (.getThreadGroup (Thread/currentThread))
            (fn []
              (try
-               (let [sandbox-ns (create-ns 'org.turtle.geometry.TurtleSandbox)]
-                 (intern sandbox-ns 'forward forward)
-                 (intern sandbox-ns 'fd forward)
-                 (intern sandbox-ns 'backward backward)
-                 (intern sandbox-ns 'back backward)
-                 (intern sandbox-ns 'bd backward)
-                 (intern sandbox-ns 'bk backward)
-                 (intern sandbox-ns 'left left)
-                 (intern sandbox-ns 'lt left)
-                 (intern sandbox-ns 'right right)
-                 (intern sandbox-ns 'rt right)
-                 (intern sandbox-ns 'heading heading)
-                 (intern sandbox-ns 'set-heading set-heading)
+               (doseq [proc-name (keys procs)] (bind-proc proc-name proc-name))
+               (doseq [name (keys constants)] (bind-value name (get constants name)))
+               ;; (log (str "running program " (read-program program-text)))
+               (.load scm (StringReader. program-text))
 
-                 (intern sandbox-ns 'pen-up? pen-up?)
-                 (intern sandbox-ns 'pen-up pen-up)
-                 (intern sandbox-ns 'pen-down pen-down)
-
-                 (intern sandbox-ns 'use-color use-color)
-                 (intern sandbox-ns 'get-color get-color)
-
-                 (intern sandbox-ns 'red (Color/argb 0xff 0xdc 0x32 0x2f))
-                 (intern sandbox-ns 'orange (Color/argb 0xff 0xcb 0x4b 0x16))
-                 (intern sandbox-ns 'yellow (Color/argb 0xff 0xb5 0x89 0x00))
-                 (intern sandbox-ns 'green (Color/argb 0xff 0x85 0x99 0x00))
-                 (intern sandbox-ns 'cyan (Color/argb 0xff 0x2a 0xa1 0x98))
-                 (intern sandbox-ns 'blue (Color/argb 0xff 0x26 0x8b 0xd2))
-                 (intern sandbox-ns 'violet (Color/argb 0xff 0x6c 0x71 0xc4))
-                 (intern sandbox-ns 'magenta (Color/argb 0xff 0xd3 0x36 0x82))
-
-                 (intern sandbox-ns 'cos (fn [x] (Math/cos (deg->rad x))))
-                 (intern sandbox-ns 'sin (fn [x] (Math/sin (deg->rad x))))
-                 (intern sandbox-ns 'rcos (fn [x] (Math/cos (double x))))
-                 (intern sandbox-ns 'rsin (fn [x] (Math/sin (double x))))
-
-                 (intern sandbox-ns '** clojure.math.numeric-tower/expt)
-                 (intern sandbox-ns 'deg->rad deg->rad)
-                 (intern sandbox-ns 'rad->deg rad->deg)
-
-                 (intern sandbox-ns (with-meta 'pi
-                                      {:const true})
-                         pi)
-
-                 (intern sandbox-ns
-                         (with-meta 'to
-                           {:macro true
-                            :arglists '([invokation _ name args & body])})
-                         (fn [invokation _ name args & body]
-                           `(defn ~name ~args ~@body)))
-
-                 (intern sandbox-ns (with-meta 'iter
-                                      {:macro true
-                                       :arglists '([invokation _ cond & body])})
-                         (fn iter [invokation _ condition & body]
-                           `(let [res# ~condition]
-                              (if (number? res#)
-                                (dotimes [_# res#]
-                                  ~@body)
-                                (when res#
-                                  (loop []
-                                    ~@body
-                                    (when ~condition
-                                      (recur))))))))
-
-                 (binding [*ns* sandbox-ns]
-                   (use '[clojure.core])
-                   (use '[clojure.math.numeric-tower :only
-                          (sqrt expt gcd floor ceil round)])
-
-                   (load-string program-text)))
+               (catch Evaluator$InterruptedException e
+                 ;; this is expected exception, do not disturb user
+                 )
                (catch java.lang.StackOverflowError e
                  (.runOnUiThread
                   activity
@@ -1194,7 +1254,16 @@
                   (fn []
                     (report-error activity
                                   (str "Error during turtle program evaluation:\n"
-                                       e)))))))
+                                       e
+                                       "\nStacktrace:\n"
+                                       (try
+                                         (let [sw (StringWriter.)
+                                               pw (PrintWriter. sw)]
+                                           (.printStackTrace e pw)
+                                           (str sw))
+                                         (catch Exception extract-exception
+                                           (str "Erorr while extracting stacktrace:\n"
+                                                extract-exception))))))))))
            "turtle program thread"
            (* 16 1024 1024))]
       (let [accumulated-lines (get-in @activity [:turtle-state :lines])]
@@ -1202,6 +1271,7 @@
                [:turtle-state]
                (assoc initial-turtle-state :lines accumulated-lines)))
       (draw-scene activity)
+      (log "starting thread")
       (.start turtle-thread)
       turtle-thread)))
 

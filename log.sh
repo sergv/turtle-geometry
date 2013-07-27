@@ -16,7 +16,7 @@ else
 fi
 
 adb "${device_arg}" logcat | \
-    awk '/AndroidRuntime|TurtleGeometry|IndependentDrawer|LineRenderer|Neko|GLSurfaceView|GLThread|libEGL|OpenGLRenderer|stdout|stderr|System\.out/ && !/Multiwindow|MultiWindowManagerService/ { sub(/^I\/System\.out\([0-9 ]+\):/, ""); print }'
+    awk '/AndroidRuntime|TurtleGeometry|IndependentDrawer|LineRenderer|Neko|GLSurfaceView|GLThread|libEGL|OpenGLRenderer|[Dd]alvik|stdout|stderr|System\.out/ && !/Multiwindow|MultiWindowManagerService/ { sub(/^I\/System\.out\([0-9 ]+\):/, ""); print }'
 
 exit 0
 
