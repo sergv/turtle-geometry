@@ -256,15 +256,24 @@
              (macroexpand (macroexpand-1 e)))
             (else e)))
     e))
-;@
-(define gentemp
+
+(define private:gensym-generate-counter
   (let ((*gensym-counter* -1))
     (lambda ()
       (set! *gensym-counter* (+ *gensym-counter* 1))
-      (string->symbol
-       (string-append "slib:G" (number->string *gensym-counter*))))))
+      *gensym-counter*)))
 
-(define gensym gentemp)
+;@
+(define (gensym name)
+  (string->symbol
+   (string-append name
+                  (number->string (private:gensym-generate-counter)))))
+
+;@
+(define (gentemp)
+  (gensym "slib:G"))
+
+
 
 (define base:eval slib:eval)
 ;@
@@ -373,44 +382,74 @@
 
 (define-macro when
   (lambda (test . body)
-    (log "when: test = %s, body = %s" test body)
     `(if ,test
-       (begin . ,body))))
+       (begin ,@body))))
 
 (define-macro unless
   (lambda (test . body)
     `(if (not ,test)
-       (begin . ,body))))
+       (begin ,@body))))
 
 (define-macro when-not
   (lambda (test . body)
     `(if (not ,test)
-       (begin . ,body))))
+       (begin ,@body))))
 
 (define-macro repeat
   (lambda (test . body)
-    (log "repeat: test = %s, body = %s" test body)
-    (let ((test-res-var (gensym)))
+    ;; (log "repeat: test = %s, body = %s" test body)
+    (let ((test-res-var (gensym "test-res-var")))
       `(let ((,test-res-var ,test))
          (cond ((number? ,test-res-var)
-                (log "repeat expansion: executing numerical loop")
+                ;; (log "repeat expansion: executing numerical loop")
                 (let iterate ((i 0))
                      (when (< i ,test-res-var)
-                       (begin . ,body)
+                       ,@body
                        (iterate (+ i 1)))))
                (else
-                (log "repeat expansion: executing plain loop")
+                ;; (log "repeat expansion: executing plain loop")
                 (when ,test-res-var
                   (let iterate ()
                        (when ,test
-                         (begin . ,body)
+                         ,@body
                          (iterate))))))))))
+
+
+(define-macro (dotimes iters . body)
+  ;; Like Common Lisp's (dotimes).
+  (let ((var (car iters))
+        (max (cadr iters))
+        (result (if (pair? (cddr iters)) (caddr iters) '()))
+
+        (max-iterations-var (gensym "max-iterations-var"))
+        (loop-var (gensym "loop")))
+    `(let ((,max-iterations-var ,max))
+       (let ,loop-var ((,var 0))
+            (if (< ,var ,max-iterations-var)
+                (begin ,@body
+                       (,loop-var (+ ,var 1)))
+                ,result)))))
+
+(define-macro (dolist iters . body)
+  ;; Like Common Lisp's (dolist).
+  (let ((var (car iters))
+        (items (cadr iters))
+        (result (or (and (pair? (cddr iters)) (caddr iters)) '()))
+        (items-var (gensym "items"))
+        (loop-var (gensym "loop")))
+    `(let ,loop-var ((,items-var ,items))
+          (if (null? ,items-var) ,result
+              (let ((,var (car ,items-var)))
+                ,@body
+                (,loop-var (cdr ,items-var)))))))
+
 
 ;; epilogue that may fail
 
 (define (current-time) (/ (System.currentTimeMillis) 1000))
 
-(if (not (.isDefined 'old-require))
+(if (and (not (.isDefined 'old-require))
+         (.isDefined 'require))
   (begin
     (set! old-require require)
     (set! require

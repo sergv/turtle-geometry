@@ -46,10 +46,11 @@
            [android.util.Log]
 
            [java.io BufferedWriter BufferedReader
-            InputStreamReader
             File FileReader FileWriter
+            InputStreamReader
+            OutputStream
             PrintWriter
-            StringReader StringWriter]
+            StringReader]
            [java.nio.charset Charset]
            [java.util.concurrent
             ConcurrentLinkedQueue
@@ -70,6 +71,7 @@
         ;; [neko.init]
         [android.clojure.util :only (android-resource
                                      defrecord*
+                                     extract-stacktrace
                                      make-double-tap-handler
                                      make-ui-dimmer)]))
 
@@ -190,6 +192,7 @@
                            ^EditText duration-entry
                            ^Menu activity-menu
                            ^TabHost activity-tab-host
+                           ^PrintWriter error-writer
 
                            ^DrawState draw-state
                            ^UserOptions user-options
@@ -207,6 +210,7 @@
 
 (defn -init []
   [[] (atom (ActivityState. nil
+                            nil
                             nil
                             nil
                             nil
@@ -243,7 +247,7 @@
   ([^org.turtle.geometry.TurtleGraphics activity
     ^String msg
     switch-to-errors-tab]
-     (.setText (error-output @activity) msg)
+     (.println (error-writer @activity) msg)
      (when switch-to-errors-tab
        (.setCurrentTabByTag (activity-tab-host @activity)
                             (.getString activity
@@ -546,7 +550,54 @@
         rotated-turtle-bitmap (rotate-right-90
                                (BitmapFactory/decodeResource
                                 (.getResources this)
-                                (resource :drawable :turtle_marker)))]
+                                (resource :drawable :turtle_marker)))
+
+
+
+        output-accum (StringBuilder.)
+        clear-error-output
+        (fn []
+          ;; clear error output
+          (.delete output-accum
+                   0
+                   (.length output-accum))
+          (.runOnUiThread
+           activity
+           (fn []
+             (.setText (error-output @activity) ""))))
+        error-sink
+        (let [bytes?
+              (fn [obj]
+                (= (type obj)
+                   (Class/forName "[B")))
+              error-output-stream ^OutputStream
+              (proxy [OutputStream] []
+                (flush ^void []
+                  (let [s (str output-accum)]
+                    (.runOnUiThread activity
+                                    (fn []
+                                      (.setText (error-output @activity) s))))
+                  ;; (report-error activity (str output-accum) false)
+                  )
+                (write
+                  ([^bytes bs offset count]
+                     (loop [i 0]
+                       (when (< i count)
+                         (.append output-accum (char (aget bs (+ offset i))))
+                         (recur (inc i))))
+                     ;; (.append output-accum
+                     ;;          ^bytes bs
+                     ;;          ;; (char-array (map char bs))
+                     ;;          ^int offset
+                     ;;          ^int count)
+                     )
+                  ([b]
+                     (if (bytes? b)
+                       (.append output-accum ^bytes b)
+                       (.append output-accum (char b))))))]
+          (PrintWriter. error-output-stream
+                        ;; do auto-flush on newlines
+                        true))]
     (swap! (.state this)
            assoc
            :draw-area draw-area-view
@@ -555,6 +606,7 @@
            :duration-entry duration-entry-view
            :activity-menu nil
            :activity-tab-host tab-host
+           :error-writer error-sink
 
            :draw-state (DrawState. false nil nil)
            :user-options (UserOptions. true true)
@@ -610,6 +662,7 @@
      button-run
      (reify android.view.View$OnClickListener
        (onClick [this unused-button]
+         (clear-error-output)
          (let [old-turtle-thread (turtle-program-thread @activity)]
            (when (or (not old-turtle-thread)
                      (not (.isAlive old-turtle-thread)))
@@ -643,6 +696,7 @@
          (.show (Toast/makeText activity
                                 "Clearing"
                                 Toast/LENGTH_SHORT))
+         (clear-error-output)
          (swap! (.state activity) assoc-in
                 [:turtle-state]
                 initial-turtle-state)
@@ -679,6 +733,9 @@
                                     get-file-intent
                                     intent-load-file)))))
 
+    (.setError (.getEvaluator (jscheme @this))
+               (error-writer @this))
+
     ;; initialize scheme by loading init file
     (log "loading jscheme init files...")
     (try
@@ -694,9 +751,14 @@
 
   (let [preferences (global-preferences @this)]
     (.setText (program-source-editor @this)
+              ;; "(let ((a 100)
+      ;; (b (/ a 2)))
+  ;; (forward a)
+  ;; (left 120)
+  ;; (forward b))"
+
               (.getString preferences
                           preferences-last-program-tag
-                          ;; "(doseq [r [1 1.5 2 2.5 3]]\n  (dotimes [_ 360]\n    (forward r)\n    (left 1)))"
                           "(use-color magenta)\n(forward 100)\n(left 90)\n(forward 100)\n")))
 
   (when bundle
@@ -1240,8 +1302,13 @@
                (.load scm (StringReader. program-text))
 
                (catch Evaluator$InterruptedException e
-                 ;; this is expected exception, do not disturb user
-                 )
+                 (.runOnUiThread
+                  activity
+                  (fn []
+                    (report-error activity
+                                  "Interrupted"
+                                  ;; this is expected exception, do not disturb user
+                                  false))))
                (catch java.lang.StackOverflowError e
                  (.runOnUiThread
                   activity
@@ -1260,14 +1327,7 @@
                                   (str "Error during turtle program evaluation:\n"
                                        e
                                        "\nStacktrace:\n"
-                                       (try
-                                         (let [sw (StringWriter.)
-                                               pw (PrintWriter. sw)]
-                                           (.printStackTrace e pw)
-                                           (str sw))
-                                         (catch Exception extract-exception
-                                           (str "Erorr while extracting stacktrace:\n"
-                                                extract-exception))))))))))
+                                       (extract-stacktrace e))))))))
            "turtle program thread"
            (* 16 1024 1024))]
       (let [accumulated-lines (get-in @activity [:turtle-state :lines])]
