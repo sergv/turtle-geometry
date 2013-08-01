@@ -30,6 +30,7 @@
            [android.net Uri]
            [android.os Bundle Environment]
            [android.text SpannableStringBuilder]
+           [android.text.method ScrollingMovementMethod]
            [android.view
             GestureDetector GestureDetector$SimpleOnGestureListener
             ScaleGestureDetector ScaleGestureDetector$OnScaleGestureListener]
@@ -526,8 +527,8 @@
                                                    (resource :draw_area))
         source-editor-view (.findViewById editor-layout
                                           (resource :program_input))
-        error-output-view (.findViewById error-output-layout
-                                         (resource :error_output))
+        error-output-view ^TextView (.findViewById error-output-layout
+                                                   (resource :error_output))
         duration-entry-view (.findViewById editor-layout
                                            (resource :duration_entry))
 
@@ -569,6 +570,9 @@
            :turtle-state initial-turtle-state)
 
     (.. draw-area-view (getHolder) (addCallback this))
+    ;; make error-output-view scrollable
+    (.setMovementMethod error-output-view
+                        (ScrollingMovementMethod.))
 
     (register-interaction-detectors activity draw-area-view)
     (let [source-tab-tag (.getString this (resource :string :source_tab_label))
