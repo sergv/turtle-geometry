@@ -22,7 +22,6 @@ Intended for use with Abelson's book going under the same name."
 
   :source-paths ["src/clojure"]
   :java-source-paths ["src/java" "bin"]
-
   :javac-options ["-target" "1.6" "-source" "1.6"]
 
   ;; The following two definitions are optional. The default
