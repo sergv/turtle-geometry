@@ -779,37 +779,39 @@
   (let [zoom-in-factor 1.25
         zoom-out-factor 0.75
         item-id (.getItemId item)]
-    (cond
-     (= item-id (resource :id :menu_center_yourself))
-     (do
-       (swap! (.state this)
-              assoc
-              :draw-area-view-transform
-              (make-identity-transform)
-              :intermediate-transform
-              (make-identity-transform))
-       (redraw-indermed-bitmap this)
-       (draw-scene this)
-       true)
-     (= item-id (resource :id :menu_zoom_in))
-     (do
-       (update-activity-view-transform this
-                                       (make-scale-transform this
-                                                             zoom-in-factor))
-       true)
-     (= item-id (resource :id :menu_zoom_out))
-     (do
-       (update-activity-view-transform this
-                                       (make-scale-transform this
-                                                             zoom-out-factor))
-       true)
-     (= item-id (resource :id :menu_refresh))
-     (do
-       (redraw-indermed-bitmap this)
-       (draw-scene this)
-       true)
-     :else
-     (.superOnMenuItemSelected this feature-id item))))
+    (condp = item-id
+      (resource :id :menu_center_yourself)
+      (do
+        (when (get-in @this [:draw-state :surface-available?])
+          (swap! (.state this)
+                 assoc
+                 :draw-area-view-transform
+                 (make-identity-transform)
+                 :intermediate-transform
+                 (make-identity-transform))
+          (redraw-indermed-bitmap this)
+          (draw-scene this))
+        true)
+      (resource :id :menu_zoom_in)
+      (do
+        (update-activity-view-transform this
+                                        (make-scale-transform this
+                                                              zoom-in-factor))
+        true)
+      (resource :id :menu_zoom_out)
+      (do
+        (update-activity-view-transform this
+                                        (make-scale-transform this
+                                                              zoom-out-factor))
+        true)
+      (resource :id :menu_refresh)
+      (do
+        (when (get-in @this [:draw-state :surface-available?])
+          (redraw-indermed-bitmap this)
+          (draw-scene this))
+        true)
+      :else
+      (.superOnMenuItemSelected this feature-id item))))
 
 (defn -onResume [^org.turtle.geometry.TurtleGraphics this]
   (.superOnResume this))
