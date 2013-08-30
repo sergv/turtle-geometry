@@ -94,16 +94,17 @@
 
 ;;;;
 
-(defn log-func
-  ([msg]
-     ;; do nothing in release
-     (android.util.Log/d "TurtleGeometry" msg))
-  ([msg & args] (log-func (apply format msg args))))
+;; do nothing in release
+;; (defn log-func
+;;   ([msg]
+;;      (android.util.Log/d "TurtleGeometry" msg))
+;;   ([msg & args] (log-func (apply format msg args))))
 
 (defmacro log
   ([msg]
      ;; do nothing in release
-     `(android.util.Log/d "TurtleGeometry" ~msg))
+     ;; `(android.util.Log/d "TurtleGeometry" ~msg)
+     )
   ([msg & args] `(log (format ~msg ~@args))))
 
 (defmacro draw-with-page-transform [canvas-var transform-matrix & body]
@@ -1263,14 +1264,18 @@
                                 (let [x (aget args 0)]
                                   (rad->deg x))))
 
-                 "log" (proxy [Procedure] [1 Integer/MAX_VALUE]
-                              (apply [^objects args]
-                                (let [arglist (scheme-list->clojure-list
-                                                 (Pair. (aget args 0)
-                                                        (aget args 1)))]
-                                  ;; (log "original arglist = %s" (vec args))
-                                  ;; (log "converted arglist = %s" (vec arglist))
-                                  (apply log-func arglist))))}
+                 ;; do nothing in release
+                 ;; "alog" (proxy [Procedure] [1 Integer/MAX_VALUE]
+                 ;;          (apply [^objects args]
+                 ;;            ;; (let [arglist (scheme-list->clojure-list
+                 ;;            ;;                (Pair. (aget args 0)
+                 ;;            ;;                       (aget args 1)))]
+                 ;;            ;;   ;; (log "original arglist = %s" (vec args))
+                 ;;            ;;   ;; (log "converted arglist = %s" (vec arglist))
+                 ;;            ;;   ;; (apply log-func arglist)
+                 ;;            ;;   )
+                 ;;            false))
+                 }
           constants {"red" (Color/argb 0xff 0xdc 0x32 0x2f)
                      "orange" (Color/argb 0xff 0xcb 0x4b 0x16)
                      "yellow" (Color/argb 0xff 0xb5 0x89 0x00)
