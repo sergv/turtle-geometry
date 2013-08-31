@@ -23,8 +23,8 @@
               :constructors {[] []})
   (:import [android.support.v4.app DialogFragment]
            [android.app Activity AlertDialog AlertDialog$Builder Dialog]
-           [android.content Context DialogInterface$OnClickListener
-            Intent SharedPreferences]
+           [android.content ActivityNotFoundException Context
+            DialogInterface$OnClickListener Intent SharedPreferences]
            [android.graphics Bitmap Bitmap$Config BitmapFactory Canvas
             Color Matrix Paint Paint$Cap Paint$Style Rect]
            [android.net Uri]
@@ -58,9 +58,6 @@
             ThreadPoolExecutor
             TimeUnit]
 
-           ;; [org.antlr.runtime ANTLRStringStream
-           ;;  CommonTokenStream]
-           ;; [org.turtle TurtleLexer TurtleParser]
            [jscheme JScheme SchemePair]
            [jsint E Evaluator$InterruptedException InputPort Pair Procedure Symbol])
   ;; (:require [neko.init]
@@ -69,30 +66,14 @@
   (:use [clojure.math.numeric-tower :only (sqrt)]
         [org.turtle.geometry.utils]
         ;; [neko.init]
+        [android.clojure.graphic :only (color->paint
+                                        with-saved-matrix)]
         [android.clojure.util :only (android-resource
                                      defrecord*
                                      extract-stacktrace
                                      make-double-tap-handler
                                      make-ui-dimmer)]))
 
-;;;; tooked from android-util's graphic.clj
-
-(defn ^Paint color->paint
-  ([argb]
-     (let [p (Paint.)]
-       (.setColor p argb)
-       p))
-  ([alpha red green blue]
-     (color->paint (Color/argb alpha red green blue))))
-
-(defmacro with-saved-matrix [canvas-var & body]
-  `(try
-     (.save ^Canvas ~canvas-var Canvas/MATRIX_SAVE_FLAG)
-     ~@body
-     (finally
-       (.restore ^Canvas ~canvas-var))))
-
-;;;;
 
 ;; do nothing in release
 ;; (defn log-func
@@ -254,6 +235,10 @@
                             (.getString activity
                                         (resource :string
                                                   :errors_tab_label))))))
+
+(defn toast-notify [^Activity activity ^String msg]
+  (.show (Toast/makeText activity msg Toast/LENGTH_SHORT)))
+
 
 (defn get-animation-duration [^org.turtle.geometry.TurtleGraphics activity]
   (text-input->int (duration-entry @activity) 0))
@@ -685,18 +670,14 @@
      button-stop
      (reify android.view.View$OnClickListener
        (onClick [this unused-button]
-         (.show (Toast/makeText activity
-                                "Stopping turtle"
-                                Toast/LENGTH_SHORT))
+         (toast-notify activity "Stopping turtle")
          (stop-turtle-thread activity))))
 
     (.setOnClickListener
      button-clear
      (reify android.view.View$OnClickListener
        (onClick [this unused-button]
-         (.show (Toast/makeText activity
-                                "Clearing"
-                                Toast/LENGTH_SHORT))
+         (toast-notify activity "Clearing")
          (clear-error-output)
          (swap! (.state activity) assoc-in
                 [:turtle-state]
@@ -715,9 +696,12 @@
              (.putExtra "explorer_title" "Save As...")
              (.putExtra "browser_line" "enabled")
              (.putExtra "browser_line_textfield" "file.tg"))
-           (.startActivityForResult activity
-                                    get-file-intent
-                                    intent-save-file)))))
+           (try
+             (.startActivityForResult activity
+                                      get-file-intent
+                                      intent-save-file)
+             (catch ActivityNotFoundException e
+               (toast-notify activity "Error while saving: AndExplorer not installed")))))))
 
     (.setOnClickListener
      button-load
@@ -730,9 +714,12 @@
            (.putExtra get-file-intent
                       "browser_filter_extension_whitelist"
                       "*.tg")
-           (.startActivityForResult activity
-                                    get-file-intent
-                                    intent-load-file)))))
+           (try
+             (.startActivityForResult activity
+                                      get-file-intent
+                                      intent-load-file)
+             (catch ActivityNotFoundException e
+               (toast-notify activity "Error while loading: AndExplorer not installed")))))))
 
     (.setError (.getEvaluator (jscheme @this))
                (error-writer @this))
@@ -752,12 +739,6 @@
 
   (let [preferences (global-preferences @this)]
     (.setText (program-source-editor @this)
-              ;; "(let ((a 100)
-      ;; (b (/ a 2)))
-  ;; (forward a)
-  ;; (left 120)
-  ;; (forward b))"
-
               (.getString preferences
                           preferences-last-program-tag
                           "(use-color magenta)\n(forward 100)\n(left 90)\n(forward 100)\n")))
@@ -831,6 +812,8 @@
 
 (defn -onDestroy [^org.turtle.geometry.TurtleGraphics this]
   (.superOnDestroy this)
+  ;; These two require customized neko library but for releases
+  ;; without nrepl server these may be omitted as well.
   ;; (neko.init/deinit)
   ;; (neko.compilation/clear-cache)
   (stop-turtle-thread this))
@@ -860,9 +843,7 @@
            save
            (fn []
              (spit filename (.getText (program-source-editor @this)))
-             (.show (Toast/makeText this
-                                    (format "Saved as %s" filename)
-                                    Toast/LENGTH_SHORT)))]
+             (toast-notify this (format "Saved as %s" filename)))]
        (if (.exists (File. filename))
          (let [activity this
                frag-dialog-manager
@@ -892,9 +873,7 @@
            filename (.getPath uri)]
        (.setText (program-source-editor @this)
                  ^String (slurp filename))
-       (.show (Toast/makeText this
-                              (format "Loaded %s" filename)
-                              Toast/LENGTH_SHORT)))
+       (toast-notify this (format "Loaded %s" filename)))
      :else
      ;; ignore it
      nil)))
