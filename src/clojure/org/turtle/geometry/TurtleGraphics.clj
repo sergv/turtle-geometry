@@ -23,14 +23,13 @@
               :constructors {[] []})
   (:import [android.support.v4.app DialogFragment]
            [android.app Activity AlertDialog AlertDialog$Builder Dialog]
-           [android.content ActivityNotFoundException Context
-            DialogInterface$OnClickListener Intent SharedPreferences]
+           [android.content Context DialogInterface$OnClickListener
+            Intent SharedPreferences]
            [android.graphics Bitmap Bitmap$Config BitmapFactory Canvas
             Color Matrix Paint Paint$Cap Paint$Style Rect]
            [android.net Uri]
            [android.os Bundle Environment]
            [android.text SpannableStringBuilder]
-           [android.text.method ScrollingMovementMethod]
            [android.view
             GestureDetector GestureDetector$SimpleOnGestureListener
             ScaleGestureDetector ScaleGestureDetector$OnScaleGestureListener]
@@ -46,11 +45,10 @@
            [android.util.Log]
 
            [java.io BufferedWriter BufferedReader
-            File FileReader FileWriter
             InputStreamReader
-            OutputStream
+            File FileReader FileWriter
             PrintWriter
-            StringReader]
+            StringReader StringWriter]
            [java.nio.charset Charset]
            [java.util.concurrent
             ConcurrentLinkedQueue
@@ -58,6 +56,9 @@
             ThreadPoolExecutor
             TimeUnit]
 
+           ;; [org.antlr.runtime ANTLRStringStream
+           ;;  CommonTokenStream]
+           ;; [org.turtle TurtleLexer TurtleParser]
            [jscheme JScheme SchemePair]
            [jsint E Evaluator$InterruptedException InputPort Pair Procedure Symbol])
   ;; (:require [neko.init]
@@ -66,26 +67,40 @@
   (:use [clojure.math.numeric-tower :only (sqrt)]
         [org.turtle.geometry.utils]
         ;; [neko.init]
-        [android.clojure.graphic :only (color->paint
-                                        with-saved-matrix)]
         [android.clojure.util :only (android-resource
                                      defrecord*
-                                     extract-stacktrace
                                      make-double-tap-handler
                                      make-ui-dimmer)]))
 
+;;;; tooked from android-util's graphic.clj
 
-;; do nothing in release
-;; (defn log-func
-;;   ([msg]
-;;      (android.util.Log/d "TurtleGeometry" msg))
-;;   ([msg & args] (log-func (apply format msg args))))
+(defn ^Paint color->paint
+  ([argb]
+     (let [p (Paint.)]
+       (.setColor p argb)
+       p))
+  ([alpha red green blue]
+     (color->paint (Color/argb alpha red green blue))))
+
+(defmacro with-saved-matrix [canvas-var & body]
+  `(try
+     (.save ^Canvas ~canvas-var Canvas/MATRIX_SAVE_FLAG)
+     ~@body
+     (finally
+       (.restore ^Canvas ~canvas-var))))
+
+;;;;
+
+(defn log-func
+  ([msg]
+     ;; do nothing in release
+     (android.util.Log/d "TurtleGeometry" msg))
+  ([msg & args] (log-func (apply format msg args))))
 
 (defmacro log
   ([msg]
      ;; do nothing in release
-     ;; `(android.util.Log/d "TurtleGeometry" ~msg)
-     )
+     `(android.util.Log/d "TurtleGeometry" ~msg))
   ([msg & args] `(log (format ~msg ~@args))))
 
 (defmacro draw-with-page-transform [canvas-var transform-matrix & body]
@@ -174,7 +189,6 @@
                            ^EditText duration-entry
                            ^Menu activity-menu
                            ^TabHost activity-tab-host
-                           ^PrintWriter error-writer
 
                            ^DrawState draw-state
                            ^UserOptions user-options
@@ -192,7 +206,6 @@
 
 (defn -init []
   [[] (atom (ActivityState. nil
-                            nil
                             nil
                             nil
                             nil
@@ -229,16 +242,12 @@
   ([^org.turtle.geometry.TurtleGraphics activity
     ^String msg
     switch-to-errors-tab]
-     (.println (error-writer @activity) msg)
+     (.setText (error-output @activity) msg)
      (when switch-to-errors-tab
        (.setCurrentTabByTag (activity-tab-host @activity)
                             (.getString activity
                                         (resource :string
                                                   :errors_tab_label))))))
-
-(defn toast-notify [^Activity activity ^String msg]
-  (.show (Toast/makeText activity msg Toast/LENGTH_SHORT)))
-
 
 (defn get-animation-duration [^org.turtle.geometry.TurtleGraphics activity]
   (text-input->int (duration-entry @activity) 0))
@@ -517,8 +526,8 @@
                                                    (resource :draw_area))
         source-editor-view (.findViewById editor-layout
                                           (resource :program_input))
-        error-output-view ^TextView (.findViewById error-output-layout
-                                                   (resource :error_output))
+        error-output-view (.findViewById error-output-layout
+                                         (resource :error_output))
         duration-entry-view (.findViewById editor-layout
                                            (resource :duration_entry))
 
@@ -536,54 +545,7 @@
         rotated-turtle-bitmap (rotate-right-90
                                (BitmapFactory/decodeResource
                                 (.getResources this)
-                                (resource :drawable :turtle_marker)))
-
-
-
-        output-accum (StringBuilder.)
-        clear-error-output
-        (fn []
-          ;; clear error output
-          (.delete output-accum
-                   0
-                   (.length output-accum))
-          (.runOnUiThread
-           activity
-           (fn []
-             (.setText (error-output @activity) ""))))
-        error-sink
-        (let [bytes?
-              (fn [obj]
-                (= (type obj)
-                   (Class/forName "[B")))
-              error-output-stream ^OutputStream
-              (proxy [OutputStream] []
-                (flush ^void []
-                  (let [s (str output-accum)]
-                    (.runOnUiThread activity
-                                    (fn []
-                                      (.setText (error-output @activity) s))))
-                  ;; (report-error activity (str output-accum) false)
-                  )
-                (write
-                  ([^bytes bs offset count]
-                     (loop [i 0]
-                       (when (< i count)
-                         (.append output-accum (char (aget bs (+ offset i))))
-                         (recur (inc i))))
-                     ;; (.append output-accum
-                     ;;          ^bytes bs
-                     ;;          ;; (char-array (map char bs))
-                     ;;          ^int offset
-                     ;;          ^int count)
-                     )
-                  ([b]
-                     (if (bytes? b)
-                       (.append output-accum ^bytes b)
-                       (.append output-accum (char b))))))]
-          (PrintWriter. error-output-stream
-                        ;; do auto-flush on newlines
-                        true))]
+                                (resource :drawable :turtle_marker)))]
     (swap! (.state this)
            assoc
            :draw-area draw-area-view
@@ -592,7 +554,6 @@
            :duration-entry duration-entry-view
            :activity-menu nil
            :activity-tab-host tab-host
-           :error-writer error-sink
 
            :draw-state (DrawState. false nil nil)
            :user-options (UserOptions. true true)
@@ -608,9 +569,6 @@
            :turtle-state initial-turtle-state)
 
     (.. draw-area-view (getHolder) (addCallback this))
-    ;; make error-output-view scrollable
-    (.setMovementMethod error-output-view
-                        (ScrollingMovementMethod.))
 
     (register-interaction-detectors activity draw-area-view)
     (let [source-tab-tag (.getString this (resource :string :source_tab_label))
@@ -648,7 +606,6 @@
      button-run
      (reify android.view.View$OnClickListener
        (onClick [this unused-button]
-         (clear-error-output)
          (let [old-turtle-thread (turtle-program-thread @activity)]
            (when (or (not old-turtle-thread)
                      (not (.isAlive old-turtle-thread)))
@@ -670,15 +627,18 @@
      button-stop
      (reify android.view.View$OnClickListener
        (onClick [this unused-button]
-         (toast-notify activity "Stopping turtle")
+         (.show (Toast/makeText activity
+                                "Stopping turtle"
+                                Toast/LENGTH_SHORT))
          (stop-turtle-thread activity))))
 
     (.setOnClickListener
      button-clear
      (reify android.view.View$OnClickListener
        (onClick [this unused-button]
-         (toast-notify activity "Clearing")
-         (clear-error-output)
+         (.show (Toast/makeText activity
+                                "Clearing"
+                                Toast/LENGTH_SHORT))
          (swap! (.state activity) assoc-in
                 [:turtle-state]
                 initial-turtle-state)
@@ -696,12 +656,9 @@
              (.putExtra "explorer_title" "Save As...")
              (.putExtra "browser_line" "enabled")
              (.putExtra "browser_line_textfield" "file.tg"))
-           (try
-             (.startActivityForResult activity
-                                      get-file-intent
-                                      intent-save-file)
-             (catch ActivityNotFoundException e
-               (toast-notify activity "Error while saving: AndExplorer not installed")))))))
+           (.startActivityForResult activity
+                                    get-file-intent
+                                    intent-save-file)))))
 
     (.setOnClickListener
      button-load
@@ -714,15 +671,9 @@
            (.putExtra get-file-intent
                       "browser_filter_extension_whitelist"
                       "*.tg")
-           (try
-             (.startActivityForResult activity
-                                      get-file-intent
-                                      intent-load-file)
-             (catch ActivityNotFoundException e
-               (toast-notify activity "Error while loading: AndExplorer not installed")))))))
-
-    (.setError (.getEvaluator (jscheme @this))
-               (error-writer @this))
+           (.startActivityForResult activity
+                                    get-file-intent
+                                    intent-load-file)))))
 
     ;; initialize scheme by loading init file
     (log "loading jscheme init files...")
@@ -741,6 +692,7 @@
     (.setText (program-source-editor @this)
               (.getString preferences
                           preferences-last-program-tag
+                          ;; "(doseq [r [1 1.5 2 2.5 3]]\n  (dotimes [_ 360]\n    (forward r)\n    (left 1)))"
                           "(use-color magenta)\n(forward 100)\n(left 90)\n(forward 100)\n")))
 
   (when bundle
@@ -761,39 +713,37 @@
   (let [zoom-in-factor 1.25
         zoom-out-factor 0.75
         item-id (.getItemId item)]
-    (condp = item-id
-      (resource :id :menu_center_yourself)
-      (do
-        (when (get-in @this [:draw-state :surface-available?])
-          (swap! (.state this)
-                 assoc
-                 :draw-area-view-transform
-                 (make-identity-transform)
-                 :intermediate-transform
-                 (make-identity-transform))
-          (redraw-indermed-bitmap this)
-          (draw-scene this))
-        true)
-      (resource :id :menu_zoom_in)
-      (do
-        (update-activity-view-transform this
-                                        (make-scale-transform this
-                                                              zoom-in-factor))
-        true)
-      (resource :id :menu_zoom_out)
-      (do
-        (update-activity-view-transform this
-                                        (make-scale-transform this
-                                                              zoom-out-factor))
-        true)
-      (resource :id :menu_refresh)
-      (do
-        (when (get-in @this [:draw-state :surface-available?])
-          (redraw-indermed-bitmap this)
-          (draw-scene this))
-        true)
-      :else
-      (.superOnMenuItemSelected this feature-id item))))
+    (cond
+     (= item-id (resource :id :menu_center_yourself))
+     (do
+       (swap! (.state this)
+              assoc
+              :draw-area-view-transform
+              (make-identity-transform)
+              :intermediate-transform
+              (make-identity-transform))
+       (redraw-indermed-bitmap this)
+       (draw-scene this)
+       true)
+     (= item-id (resource :id :menu_zoom_in))
+     (do
+       (update-activity-view-transform this
+                                       (make-scale-transform this
+                                                             zoom-in-factor))
+       true)
+     (= item-id (resource :id :menu_zoom_out))
+     (do
+       (update-activity-view-transform this
+                                       (make-scale-transform this
+                                                             zoom-out-factor))
+       true)
+     (= item-id (resource :id :menu_refresh))
+     (do
+       (redraw-indermed-bitmap this)
+       (draw-scene this)
+       true)
+     :else
+     (.superOnMenuItemSelected this feature-id item))))
 
 (defn -onResume [^org.turtle.geometry.TurtleGraphics this]
   (.superOnResume this))
@@ -812,8 +762,6 @@
 
 (defn -onDestroy [^org.turtle.geometry.TurtleGraphics this]
   (.superOnDestroy this)
-  ;; These two require customized neko library but for releases
-  ;; without nrepl server these may be omitted as well.
   ;; (neko.init/deinit)
   ;; (neko.compilation/clear-cache)
   (stop-turtle-thread this))
@@ -843,7 +791,9 @@
            save
            (fn []
              (spit filename (.getText (program-source-editor @this)))
-             (toast-notify this (format "Saved as %s" filename)))]
+             (.show (Toast/makeText this
+                                    (format "Saved as %s" filename)
+                                    Toast/LENGTH_SHORT)))]
        (if (.exists (File. filename))
          (let [activity this
                frag-dialog-manager
@@ -873,7 +823,9 @@
            filename (.getPath uri)]
        (.setText (program-source-editor @this)
                  ^String (slurp filename))
-       (toast-notify this (format "Loaded %s" filename)))
+       (.show (Toast/makeText this
+                              (format "Loaded %s" filename)
+                              Toast/LENGTH_SHORT)))
      :else
      ;; ignore it
      nil)))
@@ -1243,18 +1195,14 @@
                                 (let [x (aget args 0)]
                                   (rad->deg x))))
 
-                 ;; do nothing in release
-                 ;; "alog" (proxy [Procedure] [1 Integer/MAX_VALUE]
-                 ;;          (apply [^objects args]
-                 ;;            ;; (let [arglist (scheme-list->clojure-list
-                 ;;            ;;                (Pair. (aget args 0)
-                 ;;            ;;                       (aget args 1)))]
-                 ;;            ;;   ;; (log "original arglist = %s" (vec args))
-                 ;;            ;;   ;; (log "converted arglist = %s" (vec arglist))
-                 ;;            ;;   ;; (apply log-func arglist)
-                 ;;            ;;   )
-                 ;;            false))
-                 }
+                 "log" (proxy [Procedure] [1 Integer/MAX_VALUE]
+                              (apply [^objects args]
+                                (let [arglist (scheme-list->clojure-list
+                                                 (Pair. (aget args 0)
+                                                        (aget args 1)))]
+                                  ;; (log "original arglist = %s" (vec args))
+                                  ;; (log "converted arglist = %s" (vec arglist))
+                                  (apply log-func arglist))))}
           constants {"red" (Color/argb 0xff 0xdc 0x32 0x2f)
                      "orange" (Color/argb 0xff 0xcb 0x4b 0x16)
                      "yellow" (Color/argb 0xff 0xb5 0x89 0x00)
@@ -1288,13 +1236,8 @@
                (.load scm (StringReader. program-text))
 
                (catch Evaluator$InterruptedException e
-                 (.runOnUiThread
-                  activity
-                  (fn []
-                    (report-error activity
-                                  "Interrupted"
-                                  ;; this is expected exception, do not disturb user
-                                  false))))
+                 ;; this is expected exception, do not disturb user
+                 )
                (catch java.lang.StackOverflowError e
                  (.runOnUiThread
                   activity
@@ -1313,7 +1256,14 @@
                                   (str "Error during turtle program evaluation:\n"
                                        e
                                        "\nStacktrace:\n"
-                                       (extract-stacktrace e))))))))
+                                       (try
+                                         (let [sw (StringWriter.)
+                                               pw (PrintWriter. sw)]
+                                           (.printStackTrace e pw)
+                                           (str sw))
+                                         (catch Exception extract-exception
+                                           (str "Erorr while extracting stacktrace:\n"
+                                                extract-exception))))))))))
            "turtle program thread"
            (* 16 1024 1024))]
       (let [accumulated-lines (get-in @activity [:turtle-state :lines])]

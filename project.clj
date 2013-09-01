@@ -22,6 +22,7 @@ Intended for use with Abelson's book going under the same name."
 
   :source-paths ["src/clojure"]
   :java-source-paths ["src/java" "bin"]
+
   :javac-options ["-target" "1.6" "-source" "1.6"]
 
   ;; The following two definitions are optional. The default
@@ -128,7 +129,7 @@ Intended for use with Abelson's book going under the same name."
               :proguard-conf-path "proguard.cfg"
 
               :external-classes-paths ["/home/sergey/projects/android/android-sdk-linux/extras/android/support/v4/android-support-v4.jar"
-                                       "/mnt/disk3/projects/scheme/jscheme/lib/jscheme.jar"]
+                                       "/home/sergey/projects/android/clojure/turtle_geometry/jscheme-7.2/lib/jscheme.jar"]
 
               ;; Uncomment this if dexer fails with OutOfMemoryException
               ;; :force-dex-optimize true
