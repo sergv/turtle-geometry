@@ -69,6 +69,5 @@ lein with-profiles debug do droid code-gen, droid compile, droid create-dex, dro
 
 Disclaimer
 ==========
-I'm not in any way associated with production or copyright holders of
-Turtle Geometry book and do not claim ownership of the logo icon.
+The icon and name are provided courtesy of The MIT Press, based on the MIT Press book Turtle Geometry:  The Computer as a Medium for Exploring Mathematics, by Harold Abelson and Andrea diSessa.
 
