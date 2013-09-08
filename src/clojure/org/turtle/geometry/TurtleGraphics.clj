@@ -8,7 +8,7 @@
               :implements [clojure.lang.IDeref
                            android.view.SurfaceHolder$Callback]
               :exposes-methods {onCreate superOnCreate
-                                onCreateOptionsMenu superOnCreateOptionsMenu
+                                onPrepareOptionsMenu superOnPrepareOptionsMenu
                                 onMenuItemSelected superOnMenuItemSelected
                                 onResume superOnResume
                                 onPause superOnPause
@@ -30,7 +30,7 @@
            [android.net Uri]
            [android.os Bundle Environment]
            [android.text SpannableStringBuilder]
-           [android.text.method ScrollingMovementMethod]
+           [android.text.method LinkMovementMethod ScrollingMovementMethod]
            [android.view
             GestureDetector GestureDetector$SimpleOnGestureListener
             ScaleGestureDetector ScaleGestureDetector$OnScaleGestureListener]
@@ -66,8 +66,8 @@
   (:use [clojure.math.numeric-tower :only (sqrt)]
         [org.turtle.geometry.utils]
         ;; [neko.init]
-        [android.clojure.graphic :only (color->paint
-                                        with-saved-matrix)]
+        [android.clojure.graphic_utils :only (color->paint
+                                              with-saved-matrix)]
         [android.clojure.util :only (android-resource
                                      defrecord*
                                      extract-stacktrace
@@ -172,7 +172,6 @@
                            ^EditText program-source-editor
                            ^TextView error-output
                            ^EditText duration-entry
-                           ^Menu activity-menu
                            ^TabHost activity-tab-host
                            ^PrintWriter error-writer
 
@@ -192,7 +191,6 @@
 
 (defn -init []
   [[] (atom (ActivityState. nil
-                            nil
                             nil
                             nil
                             nil
@@ -539,7 +537,6 @@
                                 (resource :drawable :turtle_marker)))
 
 
-
         output-accum (StringBuilder.)
         clear-error-output
         (fn []
@@ -590,7 +587,6 @@
            :program-source-editor source-editor-view
            :error-output error-output-view
            :duration-entry duration-entry-view
-           :activity-menu nil
            :activity-tab-host tab-host
            :error-writer error-sink
 
@@ -747,13 +743,19 @@
     (doseq [[key _ restore] save-state-config]
       (restore key this bundle))))
 
-(defn ^boolean -onCreateOptionsMenu [^org.turtle.geometry.TurtleGraphics this
-                                     ^Menu menu]
-  (.superOnCreateOptionsMenu this menu)
-  (.inflate ^MenuInflater (.getMenuInflater this)
-            (resource :menu :main)
-            menu)
-  true)
+(defn ^boolean -onPrepareOptionsMenu [^org.turtle.geometry.TurtleGraphics this
+                                      ^Menu menu]
+  (.clear menu)
+  (let [tab-host (activity-tab-host @this)
+        graphics-tab-tag (.getString this
+                                     (resource :string :graphics_tab_label))]
+    (.inflate ^MenuInflater (.getMenuInflater this)
+              (if (= (.getCurrentTabTag tab-host)
+                     graphics-tab-tag)
+                (resource :menu :navigation_menu)
+                (resource :menu :general_menu))
+              menu))
+  (.superOnPrepareOptionsMenu this menu))
 
 (defn ^boolean -onMenuItemSelected [^org.turtle.geometry.TurtleGraphics this
                                     feature-id
@@ -792,6 +794,34 @@
           (redraw-indermed-bitmap this)
           (draw-scene this))
         true)
+      (resource :id :menu_about)
+      (let [activity this
+            about-view ^View (.inflate (.getLayoutInflater activity)
+                                       ^int (resource :layout :about)
+                                       nil)
+            main-textview
+            ^TextView
+            (.findViewById about-view
+                           (resource :id
+                                     :about_dialog_main_textview))
+            frag-dialog-manager
+            (proxy [DialogFragment] []
+              (^Dialog onCreateDialog [^Bundle saved-state]
+                (let [builder (AlertDialog$Builder. activity)]
+                  (doto builder
+                    (.setTitle "About")
+                    (.setIcon (resource :drawable :ic_menu_star))
+                    (.setView about-view)
+                    ;; (.setMessage (resource :string :about))
+                    )
+                  (.create builder))))]
+        (.setMovementMethod main-textview (LinkMovementMethod/getInstance))
+        (.show frag-dialog-manager
+               (.getSupportFragmentManager this)
+               "confirm")
+        true)
+      (resource :id :menu_exit)
+      (System/exit 0)
       :else
       (.superOnMenuItemSelected this feature-id item))))
 

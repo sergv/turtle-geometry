@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-  <string name="app_name">TurtleGeometry</string>
+  <string name="app_name">Turtle Geometry</string>
   <string name="label_run">Run</string>
   <string name="label_stop">Stop</string>
   <string name="label_clear">Clear</string>
@@ -15,9 +15,17 @@
   <string name="menu_zoom_in_title">Zoom in</string>
   <string name="menu_zoom_out_title">Zoom out</string>
   <string name="menu_refresh_title">Refresh</string>
+  <string name="menu_about_title">About</string>
+  <string name="menu_exit_title">Exit</string>
 
   <string name="graphics_tab_label">Graphics</string>
   <string name="errors_tab_label">Errors/Output</string>
   <string name="source_tab_label">Source</string>
+
+  <string name="author">Sergey Vinokurov</string>
+  <string name="about">This is the free software application designed for working through amazing <a href="http://mitpress.mit.edu/books/turtle-geometry">Turtle Geometry book</a>. Main resource on this application is located on <a href="https://github.com/sergv/turtle-geometry">github</a>\n
+  \n
+  The icon and name are provided courtesy of The MIT Press, based on the MIT Press book Turtle Geometry:  The Computer as a Medium for Exploring Mathematics, by Harold Abelson and Andrea diSessa.
+  </string>
 
 </resources>
